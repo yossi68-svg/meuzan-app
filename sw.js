@@ -2,7 +2,7 @@
 // כדי לפרסם עדכון: שנה את VERSION, העלה — בטלפון תופיע הודעה "גרסה חדשה זמינה".
 importScripts('./notify-core.js');
 
-const VERSION = 'v1.4.0';
+const VERSION = 'v1.4.1';
 const CACHE = `meuzan-${VERSION}`;
 const RUNTIME = 'meuzan-runtime';
 const SHELL = [
@@ -13,7 +13,8 @@ const SHELL = [
 const RUNTIME_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  // cache:'reload' עוקף את מטמון ה-HTTP, כדי שלא יישמרו יחד קבצים מגרסאות שונות
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', (event) => {

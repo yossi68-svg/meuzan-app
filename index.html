@@ -1055,6 +1055,26 @@
     @media (prefers-reduced-motion: reduce) { .breath-circle { animation: none; } }
   </style>
 
+  <script>
+    // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
+    (function () {
+      var EXPECT = 'v1.4.1';
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          if (window.__APP_VERSION === EXPECT) return;
+          try { if (sessionStorage.getItem('meuzan_heal')) return; sessionStorage.setItem('meuzan_heal', '1'); } catch (e) { return; }
+          fetch('./sw.js', { cache: 'no-store' }).then(function (r) {
+            if (!r.ok) throw 0;
+            return navigator.serviceWorker ? navigator.serviceWorker.getRegistrations() : [];
+          }).then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          }).then(function () {
+            return window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }) : null;
+          }).then(function () { location.reload(); }).catch(function () {});
+        }, 2500);
+      });
+    })();
+  </script>
   <script src="./notify-core.js"></script>
   <script type="module" src="./app.js"></script>
 </body>

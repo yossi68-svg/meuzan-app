@@ -1,4 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
+window.__APP_VERSION = 'v1.4.1';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
