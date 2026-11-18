@@ -3478,7 +3478,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
-      openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
+      purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
       openShabbatHub,
@@ -3542,6 +3542,47 @@ ${memoryPrompt}
     // =========================================================================
     // 15. INITIALIZATION & LIVE KOSHER COUNTDOWN TICKER
     // =========================================================================
+    // ניקוי נתוני הדגמה שנטענו בטעות (מזהים: dm_*, wi_1..wi_5, sh_demo). נתונים אמיתיים נשארים.
+    function hasDemoData() {
+      const meals = Object.values(state.days || {}).some(d => (d.meals || []).some(m => String(m.id).startsWith('dm_')));
+      const wi = (state.weighIns || []).some(w => /^wi_[1-5]$/.test(String(w.id)));
+      const sh = (state.shabbatCheckIns || []).some(x => x.id === 'sh_demo');
+      return meals || wi || sh;
+    }
+
+    function purgeDemoData() {
+      Object.keys(state.days).forEach(k => {
+        const d = state.days[k];
+        d.meals = (d.meals || []).filter(m => !String(m.id).startsWith('dm_'));
+        if (d.meals.length === 0 && !state.cravings.some(c => c.dateKey === k)) {
+          d.waterLiters = 0; d.sleepHours = null; d.movementMinutes = 0;
+        }
+      });
+      state.weighIns = (state.weighIns || []).filter(w => !/^wi_[1-5]$/.test(String(w.id)));
+      state.shabbatCheckIns = (state.shabbatCheckIns || []).filter(x => x.id !== 'sh_demo');
+      const p = state.profile;
+      if (p.heightCm === 176 && p.startWeight === 92.4 && p.currentWeight === 88.6 && p.targetWeight === 82.4) {
+        state.profile = { heightCm: 175, startWeight: 90.0, currentWeight: 90.0, targetWeight: 80.0 };
+      }
+      if (state.kosher.lastMeatMealName === 'חזה עוף על הפלנצ׳ה וסלט ירוק') {
+        state.kosher.lastMeatTimestamp = null;
+        state.kosher.lastMeatMealName = '';
+      }
+      if (!state.weighIns.length) {
+        state.weighIns = [{ id: 'wi_init', date: getTodayKey(), time: '08:00', weight: state.profile.currentWeight, note: 'נקודת פתיחה' }];
+      }
+      state.selectedDateKey = getTodayKey();
+      ensureDayRecord(state.selectedDateKey);
+      saveState();
+      renderAll();
+      showToast('🧹 נתוני ההדגמה נמחקו. עדכן משקל וגובה בלשונית "משקל ויעד"');
+    }
+
+    function offerPurgeDemo() {
+      if (!hasDemoData()) return;
+      if (confirm('נמצאו נתוני הדגמה (ארוחות ושקילות שלא הוזנו על ידך). למחוק אותם? הנתונים שהזנת בעצמך יישארו.')) purgeDemoData();
+    }
+
     async function boot() {
       initPwa();
       await loadLocalState();
@@ -3549,6 +3590,7 @@ ${memoryPrompt}
       updateNotifyHeaderIcon();
       if (isStandalone()) { const ib = document.getElementById('headerInstallBtn'); if (ib) ib.classList.add('hidden'); }
       setTimeout(maybeShowOnboarding, 500);
+      setTimeout(offerPurgeDemo, 1500);
       initFirebaseCloud();
       await loadNotifyCfg();
       updateNotifyHeaderIcon();
