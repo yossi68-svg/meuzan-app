@@ -1638,7 +1638,9 @@ ${memoryPrompt}
         kosherType: mealObj.kosherType || 'פרווה',
         status: mealObj.status || 'good',
         feedback: mealObj.wittyTip || mealObj.feedback || '',
-        rating: null
+        rating: null,
+        pending: mealObj.pending ? true : undefined,
+        pendingDesc: mealObj.pending ? (mealObj.pendingDesc || '') : undefined
       };
 
       day.meals.unshift(entry);
@@ -1652,12 +1654,81 @@ ${memoryPrompt}
       saveState();
       renderAll();
 
-      if (state.selectedDateKey === getTodayKey() && entry.kosherType === 'בשרי' && state.kosher.waitHours > 0) {
+      if (entry.pending) {
+        showToast('✅ נוסף ליומן');
+      } else if (state.selectedDateKey === getTodayKey() && entry.kosherType === 'בשרי' && state.kosher.waitHours > 0) {
         showToast(`🥩 נשמר! הופעל טיימר המתנה של ${state.kosher.waitHours} שעות לחלבי`);
       } else {
         showToast(`✅ ${entry.name} (${entry.kosherType}) נשמרה ביומן!`);
       }
       checkAchievements();
+      return entry;
+    }
+
+    // ---------- הוספה מיידית + חישוב ברקע ----------
+    async function quickAddMeal() {
+      const ta = document.getElementById('mealDescInput');
+      const raw = ta.value.trim();
+      const photo = pendingCompressedDataUrl || null;
+      if (!raw && !photo) { showToast('כתוב מה אכלת או צלם'); return; }
+      const parsed = parseMealTime(raw);
+      const learned = !photo ? findLearnedMeal(parsed.clean) : null;
+      ta.value = '';
+      clearMealPhoto();
+      closeMealSheet();
+      if (learned) {
+        learned.uses = (learned.uses || 1) + 1; learned.lastUsed = Date.now();
+        finalizeMealLogging({ name: learned.name, netCarbs: learned.netCarbs, protein: learned.protein, calories: learned.calories, kosherType: learned.kosherType, status: learned.status, wittyTip: learned.wittyTip, time: parsed.time }, null);
+        return;
+      }
+      const entry = finalizeMealLogging({
+        name: parsed.clean || 'ארוחה מצולמת', netCarbs: 0, protein: 0, calories: 0, kosherType: 'פרווה', status: 'good',
+        time: parsed.time, pending: true, pendingDesc: parsed.clean
+      }, photo);
+      if (entry) fillMealInBackground(entry.id, state.selectedDateKey);
+    }
+
+    function findMealEntry(id, dateKey) {
+      const d = state.days[dateKey];
+      return d ? (d.meals || []).find(m => m.id === id) : null;
+    }
+
+    async function fillMealInBackground(id, dateKey) {
+      const entry = findMealEntry(id, dateKey);
+      if (!entry || !entry.pending) return;
+      const base64 = entry.photo ? String(entry.photo).split(',')[1] : null;
+      let r;
+      try { r = await analyzeMealWithGemini(entry.pendingDesc || '', base64); } catch (e) { return; }
+      const e2 = findMealEntry(id, dateKey);
+      if (!e2 || !r) return;
+      if (!entry.pendingDesc) e2.name = r.name;
+      e2.carbs = r.netCarbs; e2.protein = r.protein; e2.calories = r.calories;
+      e2.kosherType = r.kosherType; e2.status = r.status; e2.feedback = r.wittyTip;
+      delete e2.pending; delete e2.pendingDesc;
+      try { learnMeal({ ...r, name: e2.name }, entry.pendingDesc || ''); } catch (er) {}
+      const waitedBefore = getKosherWaitStatus();
+      if (dateKey === getTodayKey() && r.kosherType === 'בשרי' && (e2.timestamp || 0) >= (state.kosher.lastMeatTimestamp || 0)) {
+        state.kosher.lastMeatTimestamp = e2.timestamp || Date.now();
+        state.kosher.lastMeatMealName = e2.name;
+      }
+      saveState();
+      renderAll();
+      // מתריע רק על חריג
+      if (r.netCarbs >= 30) showToast(`⚠️ ${e2.name}: ${r.netCarbs}ג׳ פחמימה במנה אחת. כדאי לאזן את שאר היום`);
+      else if (r.kosherType === 'חלבי' && waitedBefore.isWaiting) showToast('⚠️ ארוחה חלבית בזמן המתנה מבשרי. כדאי לבדוק');
+      else if (r.status === 'high') showToast(`⚠️ ${e2.name}: ארוחה גבוהה בפחמימות`);
+    }
+
+    function openEatingJournal() {
+      switchTab('weight');
+      switchHistorySubTab('days');
+      setTimeout(() => { const c = document.getElementById('historyCard'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 120);
+    }
+
+    function resumePendingMeals() {
+      Object.keys(state.days || {}).forEach(k => {
+        (state.days[k].meals || []).forEach(m => { if (m.pending) fillMealInBackground(m.id, k); });
+      });
     }
 
     function confirmSaveAnalyzedMeal() {
@@ -2304,7 +2375,7 @@ ${memoryPrompt}
         const kBadgeClass = getKosherBadgeClasses(kType);
         const kEmoji = getKosherEmoji(kType);
         const carbsNum = Number(m.carbs ?? m.netCarbs) || 0;
-        const tipText = m.feedback || m.wittyTip || '';
+        const tipText = m.pending ? '⏳ מחשב ערכים ברקע…' : (m.feedback || m.wittyTip || '');
         const carbBadgeStyle = carbsNum > 25
           ? 'bg-amber-50 text-amber-800 border-amber-200'
           : 'bg-teal-50 text-teal-700 border-teal-200';
@@ -2333,7 +2404,7 @@ ${memoryPrompt}
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5 mt-2 tabular-nums">
-                  <span class="px-2 py-0.5 rounded-lg text-[11px] font-extrabold border ${carbBadgeStyle}">${carbsNum}ג׳ פחמימה</span>
+                  <span class="px-2 py-0.5 rounded-lg text-[11px] font-extrabold border ${carbBadgeStyle}">${m.pending ? '⏳ מחשב…' : carbsNum + 'ג׳ פחמימה'}</span>
                   <span class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-700">${m.protein}ג׳ חלבון</span>
                   <span class="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-slate-100 text-slate-600">${m.calories} קק״ל</span>
                   <span class="text-[11px] text-slate-400 font-semibold">${esc(m.time)}</span>
@@ -3529,7 +3600,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
-      addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
+      openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
       openShabbatHub,
@@ -3784,6 +3855,8 @@ ${memoryPrompt}
       if (isStandalone()) { const ib = document.getElementById('headerInstallBtn'); if (ib) ib.classList.add('hidden'); }
       setTimeout(maybeShowOnboarding, 500);
       setTimeout(offerPurgeDemo, 1500);
+      setTimeout(resumePendingMeals, 2500);
+      window.addEventListener('online', resumePendingMeals);
       initFirebaseCloud();
       await loadNotifyCfg();
       updateNotifyHeaderIcon();
