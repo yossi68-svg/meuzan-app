@@ -837,7 +837,20 @@
 - ארוחות שהוא אוכל לעיתים קרובות (השתמש בערכים דומים לעקביות): ${habitual}`;
     }
 
+    // "הסקיל" של Gemini: הנחיית מערכת קבועה שנשלחת עם כל בקשה, כדי שיבין מי המשתמש, מה חשוב ואיך לדבר.
+    const COACH_BRIEF = `אתה מאמן אישי למשתמש אחד, בעברית. המטרה שלו: לרדת במשקל ובעיקר לא ליפול למתוקים ולחטיפים. תפקידך לעזור לו לשמור על משמעת ולהבין את הדפוסים שלו.
+מה חשוב לדעת עליו:
+- תזונה דלת-פחמימות מאוזנת: כ-75 גרם פחמימות נטו ביום (פחמימות פחות סיבים) וכ-130 גרם חלבון. חלבון בכל ארוחה = שובע.
+- כשרות מלאה: אין ערבוב בשר וחלב, ויש המתנה של כ-6 שעות מבשרי לחלבי. סווג כל מנה: בשרי, חלבי או פרווה. לעולם אל תמליץ על לא כשר.
+- שומר שבת: בשבת לא מתעדים ולא לוחצים עליו. מוצאי שבת חוזרים לשגרה בקלילות.
+- אין משקל קבוע כרגע. המגמה חשובה יותר ממספר בודד: משקלים ממכשירים שונים לא מושווים, והיקף מותן הוא מדד אמין.
+מה כדאי לבדוק בנתונים: שעות אכילה ומרווחים ארוכים בין ארוחות, אכילה מאוחרת בערב, שינה מתחת ל-6.5 שעות, חלבון נמוך בארוחות, מים, שעת הסיכון והטריגרים של חשקים, מתי עמד בחשק ומתי נכנע.
+איך לדבר: קצר, חם וישיר, הומור קל, בלי שיפוטיות ובלי רגשות אשם. נפילה היא נתון ולא כישלון. תן צעד מעשי אחד.
+כללי אמינות: התבסס רק על הנתונים שקיבלת. אל תמציא מספרים או דפוסים. כשאין מספיק נתונים, אמור זאת. אתה לא רופא: בבעיה רפואית הפנה לרופא, ואל תמליץ על דיאטות קיצוניות.
+כשמבקשים JSON, החזר JSON תקין בלבד.`;
+
     async function callGemini(payload) {
+      if (payload && !payload.systemInstruction) payload = { ...payload, systemInstruction: { parts: [{ text: COACH_BRIEF }] } };
       const apiKey = getGeminiKey();
       if (!apiKey) {
         if (!noKeyToastShown) {
@@ -883,6 +896,21 @@
         }
       }
       return null;
+    }
+
+    // שעת אכילה מתוך הטקסט, למשל "3 תמרים בשעה 09:00" או "קפה ב-9.30". מחזיר את הטקסט בלי השעה.
+    function parseMealTime(text) {
+      const src = String(text || '');
+      let m = src.match(/(?:(?<=^|\s)(?:בשעה|ב-?)\s*)?(?<!\d)([01]?\d|2[0-3])[:.]([0-5]\d)(?!\d)/);
+      let h, mi;
+      if (m) { h = +m[1]; mi = +m[2]; }
+      else {
+        m = src.match(/(?<=^|\s)בשעה\s*([01]?\d|2[0-3])(?![\d:.])/);
+        if (m) { h = +m[1]; mi = 0; }
+      }
+      if (!m) return { time: null, clean: src.trim() };
+      const clean = src.replace(m[0], ' ').replace(/\s+/g, ' ').trim();
+      return { time: `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`, clean: clean || src.trim() };
     }
 
     async function analyzeMealWithGemini(description, base64Jpeg) {
@@ -1147,7 +1175,7 @@ ${memoryPrompt}
       const dayKeys = Object.keys(state.days).sort().slice(-7);
       const daysSummary = dayKeys.map(dk => {
         const s = computeDaySummary(dk);
-        return `${dk}: פחמימות=${s.netCarbs}ג׳, חלבון=${s.protein}ג׳, מים=${s.waterLiters}ל׳, שינה=${s.sleepHours ?? 'לא דווח'}, ארוחות=[${s.meals.map(m => `${m.name}(${m.kosherType})`).join(', ')}]`;
+        return `${dk}: פחמימות=${s.netCarbs}ג׳, חלבון=${s.protein}ג׳, מים=${s.waterLiters}ל׳, שינה=${s.sleepHours ?? 'לא דווח'}, ארוחות=[${s.meals.map(m => `${m.time || ''} ${m.name}(${m.kosherType})`).join(', ')}]`;
       }).join('\n');
 
       const bmi = calculateBmi(state.profile.currentWeight, state.profile.heightCm);
@@ -1541,10 +1569,12 @@ ${memoryPrompt}
       btn.disabled = true;
       btn.innerHTML = `<span class="animate-pulse">✨ מנתח כשרות וערכים עם AI...</span>`;
 
-      const learned = !pendingCompressedBase64 ? findLearnedMeal(desc) : null;
+      const parsed = parseMealTime(desc);
+      const learned = !pendingCompressedBase64 ? findLearnedMeal(parsed.clean) : null;
       const result = learned
         ? { name: learned.name, netCarbs: learned.netCarbs, protein: learned.protein, calories: learned.calories, kosherType: learned.kosherType, status: learned.status || 'good', wittyTip: '🧠 מהזיכרון שלך: ארוחה שכבר תיעדת. ללא המתנה לניתוח.' }
-        : await analyzeMealWithGemini(desc, pendingCompressedBase64);
+        : await analyzeMealWithGemini(parsed.clean, pendingCompressedBase64);
+      result.time = parsed.time;
       pendingAnalysisResult = result;
 
       renderPreviewAnalysisCard();
@@ -1562,7 +1592,7 @@ ${memoryPrompt}
     function renderPreviewAnalysisCard() {
       if (!pendingAnalysisResult) return;
       const r = pendingAnalysisResult;
-      document.getElementById('previewMealName').textContent = r.name;
+      document.getElementById('previewMealName').textContent = r.time ? `${r.name} · 🕘 ${r.time}` : r.name;
 
       const badge = document.getElementById('previewKosherBadge');
       badge.textContent = `${getKosherEmoji(r.kosherType)} ${r.kosherType}`;
@@ -1587,12 +1617,19 @@ ${memoryPrompt}
     function finalizeMealLogging(mealObj, photoDataUrl) {
       const day = ensureDayRecord(state.selectedDateKey);
       const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      let timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      let ts = Date.now();
+      if (mealObj.time && /^\d{2}:\d{2}$/.test(mealObj.time)) {
+        timeStr = mealObj.time;
+        const [yy, mo, dd] = state.selectedDateKey.split('-').map(Number);
+        const [hh, mm] = timeStr.split(':').map(Number);
+        ts = new Date(yy, mo - 1, dd, hh, mm).getTime();
+      }
 
       const entry = {
         id: 'ml_' + Date.now(),
         time: timeStr,
-        timestamp: Date.now(),
+        timestamp: ts,
         photo: photoDataUrl || null,
         name: mealObj.name,
         carbs: mealObj.netCarbs ?? mealObj.carbs ?? 0,
@@ -1605,9 +1642,10 @@ ${memoryPrompt}
       };
 
       day.meals.unshift(entry);
+      day.meals.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
       if (state.selectedDateKey === getTodayKey() && entry.kosherType === 'בשרי') {
-        state.kosher.lastMeatTimestamp = Date.now();
+        state.kosher.lastMeatTimestamp = ts;
         state.kosher.lastMeatMealName = entry.name;
       }
 
@@ -1626,7 +1664,7 @@ ${memoryPrompt}
       if (!pendingAnalysisResult) return;
       const toSave = { ...pendingAnalysisResult };
       const photoToSave = pendingCompressedDataUrl || null;
-      try { learnMeal(toSave, document.getElementById('mealDescInput').value); } catch (e) {}
+      try { learnMeal(toSave, parseMealTime(document.getElementById('mealDescInput').value).clean); } catch (e) {}
 
       pendingAnalysisResult = null;
       document.getElementById('mealDescInput').value = '';
@@ -3691,6 +3729,7 @@ ${memoryPrompt}
           carbs: meals.reduce((s, m) => s + (Number(m.carbs ?? m.netCarbs) || 0), 0),
           protein: meals.reduce((s, m) => s + (Number(m.protein) || 0), 0),
           meals: meals.length,
+          eaten: meals.map(m => ({ t: m.time, n: m.name, c: Number(m.carbs ?? m.netCarbs) || 0, p: Number(m.protein) || 0 })),
           cravings: cr.map(c => ({ hour: c.hour, trigger: c.trigger, outcome: c.outcome }))
         });
       }
@@ -3721,8 +3760,8 @@ ${memoryPrompt}
       let items = null;
       const raw = await callGemini({
         contents: [{ role: 'user', parts: [{ text: `אתה מאמן תזונה ישראלי חם וישיר. המטרה של המשתמש: לא ליפול למתוקים וחטיפים. הנה נתוני 30 הימים האחרונים שלו (JSON): ${JSON.stringify(days)}.
-בכל יום: שעות שינה, מים, תנועה, פחמימות נטו, חלבון, ומערך cravings עם hour (שעה), trigger (טריגר) ו-outcome (resisted=עמד בחשק, gave_in=נכנע).
-מצא 2-3 דפוסים אמיתיים שמופיעים בנתונים בלבד (למשל קשר בין שינה, חלבון או שעה לבין חשקים). אסור להמציא. אם אין מספיק נתונים אמור זאת. לכל דפוס תן title קצר ו-detail עם צעד מעשי אחד. החזר JSON בלבד.` }] }],
+בכל יום: שעות שינה, מים, תנועה, פחמימות נטו, חלבון, ומערך eaten (t=שעת אכילה, n=מה, c=פחמימות, p=חלבון), ומערך cravings עם hour (שעה), trigger (טריגר) ו-outcome (resisted=עמד בחשק, gave_in=נכנע).
+מצא 2-3 דפוסים אמיתיים שמופיעים בנתונים בלבד (למשל קשר בין שינה, חלבון, מרווחים ארוכים בין ארוחות, אכילה מאוחרת או שעה לבין חשקים). אסור להמציא. אם אין מספיק נתונים אמור זאת. לכל דפוס תן title קצר ו-detail עם צעד מעשי אחד. החזר JSON בלבד.` }] }],
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: { type: 'OBJECT', properties: { insights: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, detail: { type: 'STRING' } }, required: ['title', 'detail'] } } }, required: ['insights'] }
