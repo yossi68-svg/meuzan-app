@@ -137,51 +137,8 @@
           dislikedPatterns: [],
           customNotes: ['שומר כשרות ושבת'],
           customQuickMeals: [],
-          discoveredInsights: [
-            {
-              id: 'ins_init_1',
-              title: 'הכוח של ארוחות פרווה בצהריים',
-              detail: 'בחירה בארוחות פרווה (כמו סלמון, טונה או שקשוקה) משאירה לך גמישות מלאה לארוחת ערב חלבית קלילה.',
-              feedback: null
-            },
-            {
-              id: 'ins_init_2',
-              title: 'שינה קצרה וחשק לפחמימות',
-              detail: 'בימים של פחות מ-6.5 שעות שינה, פתיחת הבוקר עם חלבון גבוה ו-2 כוסות מים מורידה ב-60% את החשק למתוק.',
-              feedback: null
-            },
-            {
-              id: 'ins_init_3',
-              title: 'שבת רגועה ללא לחץ מדידה',
-              detail: 'שמירה על פרוסת חלה מדודה בקידוש והתמקדות בדגים, עוף וסלטים שומרת על הירידה במשקל בלי לפגוע בעונג שבת.',
-              feedback: null
-            }
-          ],
-          pendingUpgrades: [
-            {
-              id: 'upg_init_1',
-              title: 'הוסף ארוחה מהירה אישית: חביתה ואבוקדו',
-              description: 'מוסיף כפתור פרווה בנגיעה אחת (7ג׳ פחמימה, 20ג׳ חלבון) לתפריט הוספת הארוחות שלך.',
-              actionType: 'add_quick_meal',
-              payload: {
-                id: 'cq_avocado_omelet',
-                name: 'חביתת 2 ביצים, חצי אבוקדו וירקות',
-                kosherType: 'פרווה',
-                netCarbs: 7,
-                protein: 20,
-                calories: 340,
-                status: 'excellent',
-                wittyTip: 'הותאם אישית עבורך ע״י מנוע הלמידה: פרווה, משביע ומאזן!'
-              }
-            },
-            {
-              id: 'upg_init_2',
-              title: 'כוונן יעד פחמימות ל-70 גרם נטו ביום',
-              description: 'התאמה עדינה של 5 גרם פחמימה ביום שמאיצה ירידה במשקל תוך שמירה על חיוניות גבוהה.',
-              actionType: 'adjust_carbs',
-              payload: { dailyCarbLimit: 70 }
-            }
-          ],
+          discoveredInsights: [],
+          pendingUpgrades: [],
           adoptedUpgrades: []
         },
         days: {
@@ -231,8 +188,8 @@
           dislikedPatterns: Array.isArray(incoming.aiMemory?.dislikedPatterns) ? incoming.aiMemory.dislikedPatterns : [],
           customNotes: Array.isArray(incoming.aiMemory?.customNotes) ? incoming.aiMemory.customNotes : base.aiMemory.customNotes,
           customQuickMeals: Array.isArray(incoming.aiMemory?.customQuickMeals) ? incoming.aiMemory.customQuickMeals : [],
-          discoveredInsights: Array.isArray(incoming.aiMemory?.discoveredInsights) ? incoming.aiMemory.discoveredInsights : base.aiMemory.discoveredInsights,
-          pendingUpgrades: Array.isArray(incoming.aiMemory?.pendingUpgrades) ? incoming.aiMemory.pendingUpgrades : base.aiMemory.pendingUpgrades,
+          discoveredInsights: Array.isArray(incoming.aiMemory?.discoveredInsights) ? incoming.aiMemory.discoveredInsights.filter(x => !String(x && x.id).startsWith('ins_init_')) : [],
+          pendingUpgrades: Array.isArray(incoming.aiMemory?.pendingUpgrades) ? incoming.aiMemory.pendingUpgrades.filter(x => !String(x && x.id).startsWith('upg_init_')) : [],
           adoptedUpgrades: Array.isArray(incoming.aiMemory?.adoptedUpgrades) ? incoming.aiMemory.adoptedUpgrades : []
         },
         days: incoming.days || base.days,
@@ -761,7 +718,7 @@
     }
 
     function computeAiCalibrationPct() {
-      let score = 25;
+      let score = 0;
       let totalMeals = 0;
       let ratedMeals = 0;
       let vitalityDays = 0;
@@ -779,9 +736,9 @@
       const weighInBonus = Math.max(0, (state.weighIns.length - 1) * 4);
       const feedbackBonus =
         ratedMeals * 3 +
-        state.aiMemory.likedPatterns.length * 2 +
+        Math.max(0, state.aiMemory.likedPatterns.length - 2) * 2 +
         state.aiMemory.dislikedPatterns.length * 2 +
-        state.aiMemory.customNotes.length * 3 +
+        Math.max(0, state.aiMemory.customNotes.length - 1) * 3 +
         state.aiMemory.adoptedUpgrades.length * 5 +
         state.shabbatCheckIns.length * 4;
 
@@ -790,7 +747,7 @@
       score += Math.min(15, weighInBonus);
       score += Math.min(22, feedbackBonus);
 
-      return Math.min(99, Math.max(25, score));
+      return Math.min(99, Math.max(0, score));
     }
 
     function calculateBmi(weightKg, heightCm) {
@@ -2686,7 +2643,7 @@ ${memoryPrompt}
       if (state.aiMemory.pendingUpgrades.length === 0) {
         upgContainer.innerHTML = `
           <div class="p-3 rounded-2xl bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-500">
-            כל השדרוגים הנוכחיים אומצו! לחץ על <b>״✨ הפעל סריקת למידה עמוקה״</b> למעלה ליצירת שדרוגים חדשים.
+            אין כרגע שדרוגים מוצעים. לחץ על <b>״✨ הפעל סריקת למידה עמוקה״</b> למעלה ליצירת שדרוגים חדשים.
           </div>
         `;
       } else {
@@ -2702,7 +2659,9 @@ ${memoryPrompt}
       }
 
       const insContainer = document.getElementById('discoveredInsightsContainer');
-      insContainer.innerHTML = state.aiMemory.discoveredInsights.map(ins => {
+      if (state.aiMemory.discoveredInsights.length === 0) {
+        insContainer.innerHTML = '<p class="text-xs text-slate-500 text-center py-3 leading-relaxed">עוד אין תובנות. תעד ארוחות, מים ושינה, ואחרי כמה ימים לחץ על ״הפעל סריקת למידה עמוקה״ והן יופיעו כאן, מבוססות על הנתונים שלך.</p>';
+      } else insContainer.innerHTML = state.aiMemory.discoveredInsights.map(ins => {
         const upCls = ins.feedback === 'up' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-500 border-slate-200';
         const downCls = ins.feedback === 'down' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-500 border-slate-200';
         return `
