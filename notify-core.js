@@ -1,0 +1,110 @@
+// לוגיקת התזכורות המעודדות — משותפת לדף ול-service worker (סקריפט קלאסי, בלי import).
+(function (root) {
+  const SLOTS = [
+    { id: 'morning', def: '08:00', label: '🌅 בוקר — מים ושקילה' },
+    { id: 'lunch',   def: '13:00', label: '🍽️ צהריים — תיעוד ארוחה' },
+    { id: 'water',   def: '16:00', label: '💧 אחה״צ — מים' },
+    { id: 'evening', def: '20:30', label: '🌙 ערב — סגירת יום' },
+    { id: 'motzei',  def: '20:30', label: '🕯️ מוצ״ש — סיכום שבת' }
+  ];
+
+  const POOLS = {
+    morning: [
+      'בוקר טוב! כוס מים ראשונה, ויום מאוזן מתחיל 💧',
+      'יום חדש = הזדמנות חדשה. חלבון בבוקר ושתי כוסות מים — והולכים 🌿',
+      'בלי שיפוטיות: כל בחירה טובה היום מקרבת אותך ליעד 💪',
+      'קטן ועקבי מנצח גדול ולא יציב. מתחילים בכוס מים ✨'
+    ],
+    lunch: [
+      'הגיע זמן ארוחת צהריים: חלבון + ירק, ובנגיעה אחת מתעדים 🍽️',
+      'ארוחה טובה עכשיו = שובע לאורך אחר הצהריים. מה על הצלחת?',
+      'לא לדלג על הצהריים! חלבון כשר איכותי ושומרים על אנרגיה ⚡'
+    ],
+    water: [
+      'כוס מים עכשיו? לפעמים זה רק צמא בתחפושת של רעב 💧',
+      'הפסקת מים קצרה — הגוף והריכוז יודו לך 🙌',
+      'עוד כוס אחת ואתה קרוב ליעד המים להיום 💧'
+    ],
+    evening: [
+      'סגירת יום ב-10 שניות: מה אכלת היום? ממשיכים ברצף 🔥',
+      'עוד יום עבר. תעד, תנשום, ולך לישון טוב — שינה מורידה חשק למתוק 😴'
+    ],
+    motzei: [
+      'שבוע טוב! 🕯️ סיכום מוצ״ש ב-10 שניות — איך עברה השבת?',
+      'שבוע טוב ומבורך! לחיצה אחת על ״איך עברה השבת״ וחוזרים לשגרה בכיף 🌿'
+    ]
+  };
+
+  const pad = (n) => String(n).padStart(2, '0');
+  function dateKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+  function toMinutes(t) { const p = String(t || '0:0').split(':').map(Number); return (p[0] || 0) * 60 + (p[1] || 0); }
+  function pick(pool, d, i) {
+    const doy = Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5);
+    return pool[(doy + i) % pool.length];
+  }
+
+  function build(slot, state, now, idx) {
+    const key = dateKey(now);
+    const day = ((state && state.days) || {})[key] || {};
+    const meals = day.meals || [];
+    const water = Number(day.waterLiters) || 0;
+    const carbs = meals.reduce((s, m) => s + (Number(m.carbs ?? m.netCarbs) || 0), 0);
+    const targets = (state && state.targets) || {};
+    const waterTarget = targets.water || 2;
+    const carbTarget = targets.dailyCarbLimit || 75;
+    let body = pick(POOLS[slot], now, idx);
+
+    if (slot === 'morning') {
+      const w = (state && state.weighIns) || [];
+      const last = w.length ? w[w.length - 1].date : null;
+      if (last) {
+        const p = last.split('-').map(Number);
+        const days = Math.floor((now - new Date(p[0], p[1] - 1, p[2])) / 864e5);
+        if (days >= 7) body += ' ⚖️ עבר שבוע מהשקילה האחרונה — שקילה קצרה?';
+      }
+      return { title: 'בוקר טוב 🌿', body };
+    }
+    if (slot === 'lunch') {
+      if (meals.some((m) => (m.time || '00:00') >= '11:00')) return null;
+      return { title: 'זמן לצהריים 🍽️', body };
+    }
+    if (slot === 'water') {
+      if (water >= waterTarget * 0.6) return null;
+      return { title: 'שתיית מים 💧', body: `עד עכשיו ${water.toFixed(1)} מתוך ${waterTarget} ליטר. ${body}` };
+    }
+    if (slot === 'evening') {
+      if (meals.length === 0) return { title: 'סגירת יום 🌙', body: 'היום עוד ריק ביומן — 10 שניות לתעד ארוחה ולשמור על הרצף 🔥' };
+      if (carbs <= carbTarget) return { title: 'יום מצוין 🌙', body: `${carbs}ג׳ פחמימות מתוך ${carbTarget} — איזון יפה! שינה טובה 😴` };
+      return { title: 'סגירת יום 🌙', body: `חריגה קטנה (${carbs}/${carbTarget}ג׳) — אין דרמות, מחר חוזרים לאיזון 🌿` };
+    }
+    return { title: 'שבוע טוב 🕯️', body };
+  }
+
+  // מחזיר רשימת התראות שהגיע זמנן ועוד לא נשלחו היום. מעדכן cfg.lastFired.
+  function computeDue(cfg, state, now) {
+    const out = [];
+    if (!cfg || !cfg.enabled) return out;
+    cfg.lastFired = cfg.lastFired || {};
+    const key = dateKey(now);
+    const dow = now.getDay();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    // שקט בשבת: שישי מ-14:00 ועד מוצ״ש 19:30
+    if (dow === 5 && mins >= 14 * 60) return out;
+    if (dow === 6 && mins < 19 * 60 + 30) return out;
+
+    SLOTS.forEach((s, i) => {
+      const c = (cfg.slots || {})[s.id] || { on: true, time: s.def };
+      if (!c.on) return;
+      if (s.id === 'motzei' ? dow !== 6 : dow === 6) return;
+      const t = toMinutes(c.time);
+      if (mins < t || mins - t > 180) return;
+      if (cfg.lastFired[s.id] === key) return;
+      const m = build(s.id, state, now, i);
+      cfg.lastFired[s.id] = key;
+      if (m) out.push({ slot: s.id, tag: 'meuzan-' + s.id, title: m.title, body: m.body });
+    });
+    return out;
+  }
+
+  root.MeuzanNotify = { SLOTS, computeDue, dateKey, pick };
+})(typeof self !== 'undefined' ? self : window);

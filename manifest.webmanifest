@@ -1,0 +1,17 @@
+{
+  "name": "מאוזן AI",
+  "short_name": "מאוזן AI",
+  "description": "תזונה דלת-פחמימות מאוזנת, כשרות ושבת — אישי",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0D9488",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

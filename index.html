@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>מאוזן AI — תזונה דלת-פחמימות מאוזנת, כשרות, שבת וסנכרון ענן</title>
+
+  <!-- PWA & Mobile Home Screen Meta Tags -->
+  <meta name="application-name" content="מאוזן AI" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="מאוזן AI" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0D9488" />
+  <link rel="apple-touch-icon" href="./icons/icon-180.png" />
+  <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+
+  <!-- Google Fonts: Heebo & Rubik -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="./tailwind.css" />
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    html, body {
+      font-family: 'Heebo', 'Rubik', sans-serif;
+      background-color: #EEF2F6;
+      color: #0F172A;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes sheetSlideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .animate-fade-up {
+      animation: fadeUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .animate-sheet {
+      animation: sheetSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .ring-transition {
+      transition: stroke-dashoffset 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), stroke 0.35s ease;
+    }
+    header.sticky { padding-top: calc(0.75rem + env(safe-area-inset-top)); }
+    nav > div.py-2 { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+    button, label, summary { touch-action: manipulation; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-teal-600 selection:text-white">
+
+  <!-- Toast Notification Host -->
+  <div id="toastHost" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm pointer-events-none flex flex-col items-center gap-2"></div>
+
+  <!-- Mobile-First App Shell -->
+  <div class="max-w-md mx-auto min-h-screen bg-[#F8FAFC] relative flex flex-col shadow-xl border-x border-slate-200/80">
+
+    <!-- ===================================================================== -->
+    <!-- TOP HEADER BAR (BRAND, CLOUD SYNC PILL, HOME SCREEN & SETTINGS)       -->
+    <!-- ===================================================================== -->
+    <header class="sticky top-0 z-20 bg-[#F8FAFC]/95 backdrop-blur-md px-3.5 pt-3 pb-2.5 border-b border-slate-200/80 space-y-2">
+      <div class="flex items-center justify-between gap-1.5">
+        <!-- Brand Logo & Goal/BMI Mini Pill -->
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span class="w-7 h-7 rounded-xl bg-gradient-to-br from-teal-600 to-emerald-600 text-white font-extrabold text-sm flex items-center justify-center shadow-xs shrink-0">מ</span>
+            <h1 class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight truncate font-display">מאוזן AI</h1>
+          </div>
+          <button onclick="switchTab('weight')" class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white hover:bg-teal-50 border border-slate-200 text-[10px] font-bold text-slate-600 hover:text-teal-700 transition tabular-nums">
+            <span id="headerGoalBmiPill">יעד: -10 ק״ג | BMI —</span>
+          </button>
+        </div>
+
+        <!-- Header Action Pills: Cloud Sync, Home Screen Install, Settings -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <!-- Cloud Sync / Google Sign-In Pill -->
+          <button onclick="handleHeaderCloudClick()" id="headerCloudSyncBtn" class="h-9 px-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-[11px] flex items-center gap-1 transition active:scale-95">
+            <span id="headerCloudIcon">☁️</span>
+            <span id="headerCloudLabel">התחבר לשמירה בענן</span>
+          </button>
+
+          <!-- Add to Phone Home Screen Button -->
+          <button id="headerInstallBtn" onclick="openInstallModal()" aria-label="התקנה בטלפון וגיבוי" class="w-9 h-9 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white text-base shadow-xs flex items-center justify-center transition active:scale-95">📲</button>
+
+          <!-- Reminders Bell -->
+          <button onclick="openNotifyModal()" id="headerNotifyBtn" aria-label="תזכורות והתראות" class="w-9 h-9 rounded-2xl bg-white hover:bg-amber-50 text-lg border border-slate-200 flex items-center justify-center transition active:scale-95">
+            <span id="headerNotifyIcon">🔕</span>
+          </button>
+
+          <!-- Settings Gear -->
+          <button onclick="openSettingsModal()" aria-label="הגדרות" class="w-9 h-9 rounded-2xl bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 flex items-center justify-center transition active:scale-95">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- MAIN SCROLLABLE VIEWPORT                                              -->
+    <!-- ===================================================================== -->
+    <main class="flex-1 px-3.5 pt-3.5 pb-28 space-y-3.5">
+
+      <!-- =================================================================== -->
+      <!-- TAB 1: היום (TODAY DASHBOARD)                                       -->
+      <!-- =================================================================== -->
+      <section id="view-today" class="space-y-3.5 animate-fade-up">
+
+        <!-- Greeting, Streak & Daily Motivation -->
+        <div id="greetingCard" class="rounded-3xl p-4 bg-gradient-to-l from-teal-600 to-emerald-600 text-white shadow-md space-y-1.5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div id="greetingTitle" class="text-base font-extrabold font-display">שלום</div>
+              <p id="motivationText" class="text-xs text-teal-50 leading-relaxed mt-1"></p>
+            </div>
+            <div class="text-center bg-white/15 rounded-2xl px-3 py-2 shrink-0 tabular-nums">
+              <span class="text-[10px] font-bold block text-teal-50">רצף ימים</span>
+              <span id="streakBadge" class="text-lg font-extrabold">🔥 0</span>
+            </div>
+          </div>
+          <button onclick="newMotivation()" class="text-[11px] font-bold text-white/85 hover:text-white">עוד השראה ↻</button>
+        </div>
+
+        <!-- 7-Day Interactive Date Strip with Automatic Shabbat Protection -->
+        <div class="bg-white rounded-3xl p-2 border border-slate-200 shadow-card">
+          <div id="sevenDayStrip" class="grid grid-cols-7 gap-1"></div>
+        </div>
+
+        <!-- Shabbat Protection Banner (Shown when Saturday is selected or on Shabbat) -->
+        <div id="shabbatDayBanner" class="hidden rounded-3xl p-3.5 bg-gradient-to-l from-amber-50 to-orange-50/70 border border-amber-200/90 flex items-center justify-between gap-2.5 animate-fade-up">
+          <div class="flex items-start gap-2.5">
+            <span class="text-xl shrink-0">🕯️</span>
+            <div>
+              <div class="text-xs font-extrabold text-amber-950">שבת מנוחה — הרצף שמור אוטומטית</div>
+              <p class="text-[11px] text-amber-800/90 leading-snug mt-0.5">אין צורך לגעת בטלפון בשבת. במוצ״ש מחכה לך סיכום של 10 שניות.</p>
+            </div>
+          </div>
+          <button onclick="openShabbatHub()" class="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-extrabold transition active:scale-95">
+            מוקד שבת
+          </button>
+        </div>
+
+        <!-- Live Kosher Meat-to-Dairy Countdown Bar -->
+        <div id="kosherStatusBar" class="rounded-2xl px-3.5 py-2.5 bg-emerald-50/80 border border-emerald-200/80 flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2 min-w-0">
+            <span id="kosherStatusIcon" class="text-base shrink-0">🌿</span>
+            <span id="kosherStatusText" class="font-bold text-emerald-950 truncate">סטטוס כשרות: פתוח לחלבי, בשרי ופרווה</span>
+          </div>
+          <button id="kosherResetWaitBtn" onclick="resetMeatWaitTimer()" class="hidden shrink-0 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-rose-700 border border-rose-200 text-[10px] font-extrabold transition">
+            איפוס טיימר
+          </button>
+        </div>
+
+        <!-- Hero Balanced Low-Carb Ring & Vitality Card -->
+        <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-card space-y-4">
+          <div class="flex items-center justify-between gap-3.5">
+            <!-- Smooth Animated SVG Ring Gauge for Net Carbs -->
+            <div class="relative w-28 h-28 shrink-0 flex items-center justify-center">
+              <svg class="w-28 h-28 -rotate-90" viewBox="0 0 112 112">
+                <circle cx="56" cy="56" r="46" fill="none" stroke="#E2E8F0" stroke-width="9.5" />
+                <circle id="carbsRingCircle" cx="56" cy="56" r="46" fill="none" stroke="#0D9488" stroke-width="9.5" stroke-linecap="round" stroke-dasharray="289.03" stroke-dashoffset="289.03" class="ring-transition" />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center text-center tabular-nums">
+                <span id="carbsRemainingNum" class="text-xl font-extrabold text-slate-900 leading-none">75ג׳</span>
+                <span id="carbsRemainingLabel" class="text-[10px] font-bold text-slate-400 mt-1">נותרו לפחמימה</span>
+              </div>
+            </div>
+
+            <!-- Macros & Dynamic Vitality Score -->
+            <div class="flex-1 space-y-2.5 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <span class="text-[11px] font-semibold text-slate-400 block">פחמימות נטו</span>
+                  <div class="text-base font-extrabold text-slate-900 tabular-nums">
+                    <span id="dayCarbsConsumed">0</span> <span class="text-xs font-semibold text-slate-400">/ <span id="dayCarbsTargetDisplay">75</span>ג׳</span>
+                  </div>
+                </div>
+
+                <!-- Dynamic Vitality Score Pill -->
+                <div class="px-2.5 py-1.5 rounded-2xl bg-indigo-50 border border-indigo-100 text-left tabular-nums">
+                  <span class="text-[10px] font-bold text-indigo-500 block">מדד חיוניות</span>
+                  <span id="vitalityScoreBadge" class="text-sm font-extrabold text-indigo-700">60%</span>
+                </div>
+              </div>
+
+              <!-- Daily Protein & Calories Progress Bar -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between text-[11px] font-bold tabular-nums">
+                  <span class="text-slate-600">🥩 חלבון: <span id="dayProteinConsumed" class="text-teal-700">0</span> / <span id="dayProteinTargetDisplay">130</span>ג׳</span>
+                  <span class="text-slate-400">🔥 <span id="dayCaloriesConsumed">0</span> קק״ל</span>
+                </div>
+                <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div id="dayProteinBar" class="h-full rounded-full bg-emerald-500 transition-all duration-500" style="width: 0%;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Compassionate & Witty Dynamic Status Banner -->
+          <div id="wittyStatusBanner" class="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/70 flex items-start gap-2.5">
+            <span id="wittyBannerIcon" class="text-base shrink-0 mt-0.5">✨</span>
+            <p id="wittyBannerText" class="text-xs text-slate-700 leading-relaxed font-medium">
+              יום חדש, דף חלק! תעד ארוחה כשרה בצילום או בנגיעה ונשמור על אנרגיה גבוהה.
+            </p>
+          </div>
+        </div>
+
+        <!-- 3-Column Interactive Vitality Habit Cards -->
+        <div class="grid grid-cols-3 gap-2">
+          <!-- 1. Water Habit Card (+250ml / +500ml) -->
+          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between relative overflow-hidden">
+            <div id="waterCardFill" class="absolute bottom-0 left-0 right-0 bg-sky-500/10 transition-all duration-500 pointer-events-none" style="height: 0%;"></div>
+
+            <div class="relative z-10 flex items-center justify-between">
+              <span class="text-base">💧</span>
+              <button onclick="adjustWater(-0.25)" aria-label="הפחת מים" class="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs font-bold flex items-center justify-center">−</button>
+            </div>
+
+            <div class="relative z-10 my-1.5 tabular-nums">
+              <div class="text-[11px] font-bold text-slate-500">מים</div>
+              <div class="text-sm font-extrabold text-slate-900 mt-0.5"><span id="habitWaterVal">0.0</span><span class="text-[10px] font-semibold text-slate-400"> / <span id="habitWaterTarget">2.0</span>ל׳</span></div>
+            </div>
+
+            <div class="relative z-10 grid grid-cols-2 gap-1">
+              <button onclick="adjustWater(0.25)" class="py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-extrabold transition active:scale-95">
+                +250
+              </button>
+              <button onclick="adjustWater(0.5)" class="py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-extrabold transition active:scale-95">
+                +500
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Sleep Habit Card -->
+          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-base">😴</span>
+              <span id="sleepShortTag" class="hidden px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[9px] font-extrabold">קצר</span>
+            </div>
+
+            <div class="my-1.5 tabular-nums">
+              <div class="text-[11px] font-bold text-slate-500">שינה</div>
+              <div class="text-sm font-extrabold text-slate-900 mt-0.5"><span id="habitSleepVal">—</span></div>
+            </div>
+
+            <button onclick="cycleSleepHours()" class="w-full py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-[10px] font-extrabold transition active:scale-95">
+              עדכן שעות
+            </button>
+          </div>
+
+          <!-- 3. Movement Habit Card -->
+          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span id="habitMoveEmoji" class="text-base">🛋️</span>
+              <span id="habitMoveActiveDot" class="hidden w-2 h-2 rounded-full bg-emerald-500"></span>
+            </div>
+
+            <div class="my-1.5">
+              <div class="text-[11px] font-bold text-slate-500">תנועה</div>
+              <div id="habitMoveLabel" class="text-[11px] font-extrabold text-slate-900 mt-1 leading-tight">מנוחה</div>
+            </div>
+
+            <button onclick="cycleMovementMinutes()" class="w-full py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 text-[10px] font-extrabold transition active:scale-95">
+              +15 דק׳
+            </button>
+          </div>
+        </div>
+
+        <!-- Selected Day's Kosher Meals List with AI Feedback Buttons -->
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between px-1">
+            <h2 id="mealsSectionTitle" class="text-xs font-extrabold text-slate-500">הארוחות הכשרות שלי היום</h2>
+            <button onclick="openMealSheet('ai')" class="text-xs font-extrabold text-teal-600 hover:text-teal-700">
+              + תעד ארוחה
+            </button>
+          </div>
+
+          <div id="dayMealsListContainer" class="space-y-2.5"></div>
+        </div>
+
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- TAB 2: משקל ויעד (WEIGHT, BMI, MILESTONES & FULL HISTORY)           -->
+      <!-- =================================================================== -->
+      <section id="view-weight" class="hidden space-y-3.5 animate-fade-up">
+
+        <!-- Personal Profile, BMI & -10 kg Goal Card -->
+        <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-card space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-base font-extrabold text-slate-900 font-display">משקל, BMI ויעד אישי</h2>
+              <p class="text-xs text-slate-400">מעקב מדויק בדרך לירידה של 10 ק״ג</p>
+            </div>
+            <span id="bmiCategoryBadge" class="px-2.5 py-1 rounded-full text-xs font-extrabold bg-teal-50 text-teal-700 border border-teal-200">
+              הזן פרטים
+            </span>
+          </div>
+
+          <!-- 4 Editable Profile Fields -->
+          <div class="grid grid-cols-2 gap-2.5 tabular-nums">
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <label for="profHeightInput" class="block text-[11px] font-bold text-slate-400">גובה (ס״מ)</label>
+              <input type="number" id="profHeightInput" min="120" max="230" step="1" onchange="handleProfileFieldChange('height')" class="w-full bg-transparent text-base font-extrabold text-slate-900 mt-0.5 focus:outline-none" />
+            </div>
+
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <label for="profStartWeightInput" class="block text-[11px] font-bold text-slate-400">משקל התחלה (ק״ג)</label>
+              <input type="number" id="profStartWeightInput" min="40" max="250" step="0.1" onchange="handleProfileFieldChange('start')" class="w-full bg-transparent text-base font-extrabold text-slate-900 mt-0.5 focus:outline-none" />
+            </div>
+
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <label for="profCurrentWeightInput" class="block text-[11px] font-bold text-slate-400">משקל נוכחי (ק״ג)</label>
+              <input type="number" id="profCurrentWeightInput" min="40" max="250" step="0.1" onchange="handleProfileFieldChange('current')" class="w-full bg-transparent text-base font-extrabold text-teal-700 mt-0.5 focus:outline-none" />
+            </div>
+
+            <div class="p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <label for="profTargetWeightInput" class="block text-[11px] font-bold text-slate-400">משקל יעד (ק״ג)</label>
+              <input type="number" id="profTargetWeightInput" min="40" max="250" step="0.1" onchange="handleProfileFieldChange('target')" class="w-full bg-transparent text-base font-extrabold text-emerald-700 mt-0.5 focus:outline-none" />
+            </div>
+          </div>
+
+          <!-- Real-Time BMI Spectrum Gauge -->
+          <div class="p-3.5 rounded-2xl bg-slate-50/90 border border-slate-200/80 space-y-3 tabular-nums">
+            <div class="flex items-center justify-between text-xs">
+              <div>
+                <span class="text-slate-400 font-semibold block">BMI נוכחי</span>
+                <span id="currentBmiDisplay" class="text-xl font-extrabold text-slate-900">—</span>
+              </div>
+              <div class="text-center">
+                <span class="text-slate-400 font-semibold block">נותרו ליעד</span>
+                <span id="kgRemainingDisplay" class="text-base font-extrabold text-teal-700">— ק״ג</span>
+              </div>
+              <div class="text-left">
+                <span class="text-slate-400 font-semibold block">BMI ביעד</span>
+                <span id="targetBmiDisplay" class="text-base font-extrabold text-emerald-600">—</span>
+              </div>
+            </div>
+
+            <!-- Visual Spectrum Bar (BMI 16 to 38) -->
+            <div class="pt-4 pb-1 relative">
+              <div id="targetBmiPin" class="hidden absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-500" style="left: 40%;">
+                <span class="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-extrabold leading-tight">יעד</span>
+                <div class="w-0.5 h-2 bg-emerald-600"></div>
+              </div>
+
+              <div id="currentBmiPin" class="hidden absolute top-0 -translate-x-1/2 flex flex-col items-center transition-all duration-500 z-10" style="left: 65%;">
+                <span class="px-1.5 py-0.2 rounded bg-slate-900 text-white text-[9px] font-extrabold leading-tight">אתה</span>
+                <div class="w-0.5 h-2 bg-slate-900"></div>
+              </div>
+
+              <div class="w-full h-3 rounded-full overflow-hidden flex shadow-inner">
+                <div class="h-full bg-sky-400" style="width: 11.4%;" title="תת-משקל (<18.5)"></div>
+                <div class="h-full bg-emerald-500" style="width: 29.5%;" title="תקין (18.5-24.9)"></div>
+                <div class="h-full bg-amber-400" style="width: 22.7%;" title="עודף משקל (25-29.9)"></div>
+                <div class="h-full bg-rose-400" style="width: 36.4%;" title="השמנה (30+)"></div>
+              </div>
+
+              <div class="flex justify-between text-[10px] font-semibold text-slate-400 mt-1">
+                <span>18.5 תקין</span>
+                <span>25.0</span>
+                <span>30.0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 Milestone Badges (-2.5, -5.0, -7.5, -10.0 kg) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-extrabold text-slate-700">4 אבני דרך ליעד</span>
+              <span id="totalLostSummaryText" class="font-bold text-teal-600 tabular-nums">ירדת 0.0 ק״ג</span>
+            </div>
+            <div id="milestonesGrid" class="grid grid-cols-4 gap-2 tabular-nums"></div>
+          </div>
+        </div>
+
+        <!-- Quick Weigh-In (+/- 0.1 kg) & SVG Trend Chart -->
+        <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-card space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-extrabold text-slate-900">שקילה מהירה ומגמה</h3>
+            <span id="chartPointHoverLabel" class="text-xs font-bold text-teal-600 tabular-nums"></span>
+          </div>
+
+          <div class="flex items-center gap-2 tabular-nums">
+            <button onclick="stepWeighIn(-0.1)" aria-label="הפחת 100 גרם" class="w-11 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-lg transition active:scale-95 shrink-0">
+              −
+            </button>
+            <input type="number" id="quickWeighInInput" step="0.1" min="40" max="250" class="w-24 text-center text-xl font-extrabold py-2 rounded-2xl bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            <button onclick="stepWeighIn(0.1)" aria-label="הוסף 100 גרם" class="w-11 h-11 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-lg transition active:scale-95 shrink-0">
+              +
+            </button>
+            <button onclick="logNewWeighIn()" class="flex-1 h-11 px-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs shadow-xs transition active:scale-95">
+              שמור שקילה
+            </button>
+          </div>
+
+          <!-- SVG Line Chart with Dashed Green Target Weight Line -->
+          <div class="w-full overflow-hidden pt-1">
+            <svg id="weightTrendSvg" viewBox="0 0 340 175" class="w-full h-44 overflow-visible"></svg>
+          </div>
+        </div>
+
+        <!-- Complete Weight & Day-by-Day History Card -->
+        <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-card space-y-3.5">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-extrabold text-slate-900">היסטוריה מלאה</h3>
+            <button onclick="loadDemoData()" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-extrabold transition active:scale-95">
+              ✨ טען נתוני הדגמה
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100">
+            <button onclick="switchHistorySubTab('weights')" id="histSubTab-weights" class="py-2 rounded-xl text-xs font-extrabold bg-white text-slate-900 shadow-xs transition">
+              ⚖️ היסטוריית שקילות
+            </button>
+            <button onclick="switchHistorySubTab('days')" id="histSubTab-days" class="py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+              📅 ימים וארוחות כשרות
+            </button>
+          </div>
+
+          <div id="historyWeighInsContainer" class="space-y-2"></div>
+          <div id="historyDaysContainer" class="hidden space-y-2.5"></div>
+        </div>
+
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- TAB 3: מאמן AI & שבת (CONTEXT-AWARE KOSHER COACH + SHABBAT HUB)     -->
+      <!-- =================================================================== -->
+      <section id="view-coach" class="hidden space-y-3.5 animate-fade-up">
+
+        <!-- Sub-Switcher: Personal Kosher Coach vs. Shabbat Hub -->
+        <div class="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-white border border-slate-200 shadow-card">
+          <button onclick="switchCoachSubTab('chat')" id="coachSubBtn-chat" class="py-2.5 rounded-xl text-xs font-extrabold bg-indigo-600 text-white shadow-xs transition">
+            💬 מאמן AI כשר
+          </button>
+          <button onclick="switchCoachSubTab('shabbat')" id="coachSubBtn-shabbat" class="py-2.5 rounded-xl text-xs font-bold text-amber-900 hover:bg-amber-50 transition">
+            🕯️ מוקד שבת ומוצ״ש
+          </button>
+        </div>
+
+        <!-- SUB-VIEW A: PERSONAL WITTY KOSHER AI COACH CHAT -->
+        <div id="coachSubView-chat" class="flex flex-col h-[calc(100vh-235px)] min-h-[410px]">
+          <!-- Quick Kosher Prompts -->
+          <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-2.5 shrink-0">
+            <button onclick="sendCoachQuickPrompt('מה לאכול לארוחת ערב כשרה ומאוזנת?')" class="shrink-0 px-3 py-2 rounded-2xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-xs font-bold shadow-2xs transition active:scale-95">
+              🥗 ארוחת ערב כשרה ומאוזנת
+            </button>
+            <button onclick="sendCoachQuickPrompt('עייף ורוצה מתוק פרווה — הצילו!')" class="shrink-0 px-3 py-2 rounded-2xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-xs font-bold shadow-2xs transition active:scale-95">
+              🍫 מתוק פרווה מאוזן
+            </button>
+            <button onclick="sendCoachQuickPrompt('תן לי טיפ חכם לשבת הקרובה')" class="shrink-0 px-3 py-2 rounded-2xl bg-white hover:bg-amber-50 text-amber-900 border border-amber-200 text-xs font-bold shadow-2xs transition active:scale-95">
+              🕯️ טיפ חכם לשבת
+            </button>
+            <button onclick="sendCoachQuickPrompt('איך אני מתקדם לעבר מינוס 10 ק״ג?')" class="shrink-0 px-3 py-2 rounded-2xl bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-xs font-bold shadow-2xs transition active:scale-95">
+              🚀 מצב היעד שלי
+            </button>
+          </div>
+
+          <!-- Chat Stream with 👍/👎 Learning Feedback -->
+          <div id="coachMessagesFeed" class="flex-1 overflow-y-auto space-y-3 py-2 px-0.5"></div>
+
+          <!-- Input Form -->
+          <form onsubmit="handleCoachFormSubmit(event)" class="pt-2 flex items-center gap-2 shrink-0">
+            <input type="text" id="coachInputField" placeholder="שאל את המאמן הכשר שלך..." required class="flex-1 px-4 py-3 rounded-2xl bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs" />
+            <button type="submit" id="coachSendButton" class="h-11 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-xs transition active:scale-95">
+              שלח
+            </button>
+          </form>
+        </div>
+
+        <!-- SUB-VIEW B: SHABBAT HUB (MOTZEI SHABBAT 10-SEC CHECK-IN & PLANNER) -->
+        <div id="coachSubView-shabbat" class="hidden space-y-3.5">
+          <!-- Automatic Streak Protection Card -->
+          <div class="bg-gradient-to-l from-amber-50 to-orange-50/70 rounded-3xl p-4 border border-amber-200 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🕯️</span>
+              <div>
+                <h2 class="text-sm font-extrabold text-amber-950 font-display">שמירת שבת והגנת רצף אוטומטית</h2>
+                <p class="text-[11px] text-amber-800">שבת קודש מחוץ למסכים — הרצף שלך נשמר אוטומטית כל שבת.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Motzei Shabbat 10-Second 3-Button Check-In -->
+          <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-extrabold text-slate-900">✨ סיכום מוצ״ש ב-10 שניות</h3>
+              <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-extrabold">+למידת AI</span>
+            </div>
+            <p class="text-xs text-slate-500">איך עברה השבת? לחיצה אחת מעדכנת את ה-AI ומכווננת את השבוע החדש:</p>
+
+            <div class="space-y-2">
+              <button onclick="logMotzeiShabbatCheckin('balanced')" class="w-full py-3 px-3.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-xs font-extrabold text-right flex items-center justify-between transition active:scale-95">
+                <span>שבת מאוזנת ונעימה 🌿</span>
+                <span class="text-[11px] text-emerald-700">בחר ←</span>
+              </button>
+              <button onclick="logMotzeiShabbatCheckin('slight_extra')" class="w-full py-3 px-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-extrabold text-right flex items-center justify-between transition active:scale-95">
+                <span>קצת חריגות בחלה / קינוח 🍷</span>
+                <span class="text-[11px] text-amber-700">בחר ←</span>
+              </button>
+              <button onclick="logMotzeiShabbatCheckin('heavy')" class="w-full py-3 px-3.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-xs font-extrabold text-right flex items-center justify-between transition active:scale-95">
+                <span>סעודות כבדות — חוזרים לשגרה בכיף 💪</span>
+                <span class="text-[11px] text-indigo-700">בחר ←</span>
+              </button>
+            </div>
+
+            <div id="motzeiShabbatFeedbackBox" class="hidden p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-xs text-slate-800 font-medium leading-relaxed"></div>
+          </div>
+
+          <!-- Kosher Low-Carb Shabbat Menu Planner -->
+          <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-extrabold text-slate-900">🍷 תפריט שבת כשר ומאוזן</h3>
+              <button onclick="generateAiShabbatPlan()" id="genShabbatPlanBtn" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-extrabold transition active:scale-95">
+                ✨ התאם אישית עם AI
+              </button>
+            </div>
+
+            <div id="shabbatPlannerContent" class="space-y-2 text-xs text-slate-700 leading-relaxed">
+              <div class="p-3 rounded-2xl bg-slate-50">
+                <b class="text-slate-900">🍞 קידוש והמוציא:</b> פרוסת חלה מדודה (כ-30 גרם) להמוציא, ואז מתמקדים בדגים, בשר וסלטים.
+              </div>
+              <div class="p-3 rounded-2xl bg-emerald-50/60">
+                <b class="text-emerald-900">🐟 מנה ראשונה (פרווה):</b> דג מרוקאי / סלמון בתנור ללא סוכר עם עשבי תיבול, שום ושמן זית (~4ג׳ פחמימה).
+              </div>
+              <div class="p-3 rounded-2xl bg-rose-50/60">
+                <b class="text-rose-900">🍗 עיקרית וסלטים (בשרי):</b> עוף צלוי / צלי בקר לצד טחינה, חציל קלוי וסלטים חיים ללא תפוחי אדמה.
+              </div>
+              <div class="p-3 rounded-2xl bg-amber-50/60">
+                <b class="text-amber-900">🍓 קינוח פרווה מאוזן:</b> קוביות ג׳לי פירות יער ללא סוכר או פירות יער עם קרם קוקוס + תה צמחים.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- TAB 4: למידה (AI SELF-LEARNING ENGINE & 1-CLICK APP UPGRADES)       -->
+      <!-- =================================================================== -->
+      <section id="view-learning" class="hidden space-y-3.5 animate-fade-up">
+
+        <!-- AI Personalization Accuracy Score & Deep Scan Card -->
+        <div class="bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-700 rounded-3xl p-4 sm:p-5 text-white shadow-md space-y-3.5">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/15 text-[10px] font-extrabold">
+                🧠 מנוע למידה והתאמה עצמית
+              </span>
+              <h2 class="text-base font-extrabold mt-1.5 font-display">המוח של מאוזן AI</h2>
+              <p class="text-xs text-indigo-100 leading-relaxed mt-0.5">
+                לומד מהארוחות הכשרות, השינה, השקילות והמשוב שלך (👍/👎) ומשדרג את האפליקציה עבורך.
+              </p>
+            </div>
+            <div class="text-center bg-white/15 backdrop-blur-xs rounded-2xl px-3 py-2 shrink-0 tabular-nums">
+              <span class="text-[10px] font-bold text-indigo-100 block">דיוק AI</span>
+              <span id="brainCardCalibrationPct" class="text-xl font-extrabold">25%</span>
+            </div>
+          </div>
+
+          <!-- Calibration Progress Bar -->
+          <div class="w-full h-2 rounded-full bg-white/20 overflow-hidden">
+            <div id="brainCalibrationBar" class="h-full rounded-full bg-emerald-300 transition-all duration-500" style="width: 25%;"></div>
+          </div>
+
+          <!-- Run Deep Learning Scan Button -->
+          <button onclick="runDeepAiLearningScan()" id="deepLearningScanBtn" class="w-full py-3 rounded-2xl bg-white hover:bg-indigo-50 text-indigo-700 font-extrabold text-xs sm:text-sm shadow-sm flex items-center justify-center gap-2 transition active:scale-95">
+            <span>✨ הפעל סריקת למידה עמוקה</span>
+          </button>
+        </div>
+
+        <!-- 1-Click App Self-Upgrades -->
+        <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-extrabold text-slate-900">🚀 שדרוגים חכמים מוכנים לאימוץ</h3>
+            <span class="text-[11px] font-bold text-indigo-600">לחיצה אחת</span>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-snug">
+            לחיצה על <b>״אמץ שיפור באפליקציה״</b> מוסיפה אוטומטית כפתורי ארוחות אישיות או מכווננת את היעדים שלך:
+          </p>
+          <div id="pendingUpgradesContainer" class="space-y-2.5"></div>
+        </div>
+
+        <!-- Learned Insights & Patterns -->
+        <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-extrabold text-slate-900">🔍 תובנות ודפוסים שה-AI למד עליך</h3>
+            <span class="text-[10px] font-bold text-slate-400">דרג 👍 / 👎</span>
+          </div>
+          <div id="discoveredInsightsContainer" class="space-y-2.5"></div>
+        </div>
+
+        <!-- Transparent Memory Manager -->
+        <div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-3.5">
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">🧬 זיכרון אישי והעדפות כשרות</h3>
+            <p class="text-[11px] text-slate-500 mt-0.5">ה-AI משתמש בכללים האלה בכל ניתוח ארוחה והמלצה. תוכל להוסיף או להסיר בחופשיות:</p>
+          </div>
+
+          <form onsubmit="handleAddCustomMemoryNote(event)" class="flex items-center gap-2">
+            <input type="text" id="customMemoryNoteInput" placeholder="למשל: אוהב קפה הפוך בבוקר / מעדיף ערב פרווה" required class="flex-1 px-3 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <button type="submit" class="px-3.5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shrink-0 transition active:scale-95">
+              + למד
+            </button>
+          </form>
+
+          <div id="aiMemoryChipsContainer" class="flex flex-wrap gap-1.5"></div>
+
+          <div class="pt-2.5 border-t border-slate-100 space-y-2">
+            <div class="text-xs font-extrabold text-slate-700">✅ שדרוגים שכבר אומצו באפליקציה</div>
+            <div id="adoptedUpgradesList" class="space-y-1.5"></div>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- ===================================================================== -->
+    <!-- BOTTOM NAVIGATION BAR (4 TABS + FLOATING CENTRAL '+' BUTTON)          -->
+    <!-- ===================================================================== -->
+    <nav class="fixed bottom-0 left-0 right-0 z-30">
+      <div class="max-w-md mx-auto bg-white/95 backdrop-blur-lg border-t border-slate-200 shadow-nav px-2 py-2 flex items-center justify-between relative">
+
+        <!-- Tab 1: היום -->
+        <button onclick="switchTab('today')" id="navBtn-today" class="flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          <span class="text-[11px] font-extrabold">היום</span>
+        </button>
+
+        <!-- Tab 2: משקל ויעד -->
+        <button onclick="switchTab('weight')" id="navBtn-weight" class="flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <span class="text-[11px] font-extrabold">משקל ויעד</span>
+        </button>
+
+        <!-- Central Floating '+' Button -->
+        <div class="px-1.5 flex items-center justify-center">
+          <button onclick="openMealSheet('ai')" aria-label="תיעוד ארוחה" class="-mt-7 w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 text-white shadow-fab flex items-center justify-center transition transform active:scale-90 border-4 border-[#F8FAFC]">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2.7" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Tab 3: מאמן AI -->
+        <button onclick="switchTab('coach')" id="navBtn-coach" class="flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          <span class="text-[11px] font-extrabold">מאמן AI</span>
+        </button>
+
+        <!-- Tab 4: למידה -->
+        <button onclick="switchTab('learning')" id="navBtn-learning" class="flex-1 flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl transition">
+          <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span class="text-[11px] font-extrabold">למידה <span id="navCalibrationPct" class="text-[9px] text-indigo-600">25%</span></span>
+        </button>
+
+      </div>
+    </nav>
+
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- BOTTOM-SHEET MODAL: KOSHER MEAL LOGGER & GEMINI VISION/TEXT ANALYZER    -->
+  <!-- ======================================================================= -->
+  <div id="mealSheetBackdrop" class="hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs flex items-end justify-center">
+    <div class="w-full max-w-md bg-white rounded-t-3xl p-5 pb-8 shadow-2xl border-t border-slate-200 space-y-4 animate-sheet max-h-[92vh] overflow-y-auto">
+      <div class="w-10 h-1.5 rounded-full bg-slate-200 mx-auto"></div>
+
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-extrabold text-slate-900 font-display">הוספת ארוחה כשרה</h3>
+          <p id="mealSheetDateSubtitle" class="text-xs text-slate-500">מתעד עבור: היום</p>
+        </div>
+        <button onclick="closeMealSheet()" aria-label="סגור" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <!-- Kosher Wait Alert Banner inside Meal Sheet -->
+      <div id="mealSheetKosherAlert" class="hidden p-3 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 font-bold flex items-center gap-2">
+        <span>🥩</span>
+        <span id="mealSheetKosherAlertText">המתנה מבשרי לחלבי פעילה — מנות פרווה ובשרי מסומנות כמומלצות כעת.</span>
+      </div>
+
+      <!-- Sub-Tabs: AI Photo/Text vs. 1-Tap Kosher Quick Meals -->
+      <div class="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-100">
+        <button onclick="switchMealSheetTab('ai')" id="mealTabBtn-ai" class="py-2 rounded-xl text-xs font-extrabold bg-white text-slate-900 shadow-xs transition">
+          ✨ צילום או תיאור (AI)
+        </button>
+        <button onclick="switchMealSheetTab('quick')" id="mealTabBtn-quick" class="py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-800 transition">
+          ⚡ ארוחות מהירות כשרות
+        </button>
+      </div>
+
+      <!-- TAB A: AI PHOTO / TEXT ANALYZER -->
+      <div id="mealSheetTab-ai" class="space-y-3.5">
+        <div class="grid grid-cols-2 gap-2.5">
+          <label class="cursor-pointer py-3.5 px-3 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 flex items-center justify-center gap-2 text-xs font-extrabold transition active:scale-95">
+            <span class="text-base">📸</span>
+            <span>צלם ארוחה</span>
+            <input type="file" id="mealCameraInput" accept="image/*" capture="environment" onchange="onMealPhotoPicked(event)" class="hidden" />
+          </label>
+          <label class="cursor-pointer py-3.5 px-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center gap-2 text-xs font-extrabold transition active:scale-95">
+            <span class="text-base">🖼️</span>
+            <span>בחר מגלריה</span>
+            <input type="file" id="mealGalleryInput" accept="image/*" onchange="onMealPhotoPicked(event)" class="hidden" />
+          </label>
+        </div>
+
+        <div id="mealPhotoPreviewBox" class="hidden relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100">
+          <img id="mealPhotoPreviewImg" src="" alt="תצוגה מקדימה" class="w-full h-44 object-cover" />
+          <button type="button" onclick="clearMealPhoto()" class="absolute top-2.5 left-2.5 w-8 h-8 rounded-full bg-slate-900/75 text-white text-xs font-bold flex items-center justify-center shadow">✕</button>
+        </div>
+
+        <div>
+          <label for="mealDescInput" class="block text-xs font-bold text-slate-700 mb-1">תיאור הארוחה (למשל: חזה עוף צרוב עם טחינה וסלט)</label>
+          <textarea id="mealDescInput" rows="2" placeholder="כתוב כאן מה אכלת או הוסף פרטים לצילום..." class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
+        </div>
+
+        <button type="button" onclick="runAiMealAnalysis()" id="runAiAnalysisBtn" class="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition active:scale-95">
+          <span>✨ נתח ארוחה כשרה עם AI</span>
+        </button>
+
+        <!-- AI Analysis Preview Card -->
+        <div id="aiAnalysisPreviewCard" class="hidden p-4 rounded-3xl bg-indigo-50/60 border border-indigo-200 space-y-3 animate-fade-up">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <span class="text-[10px] font-extrabold text-indigo-600">תוצאת ניתוח AI</span>
+              <h4 id="previewMealName" class="text-base font-extrabold text-slate-900 mt-0.5">—</h4>
+            </div>
+            <span id="previewKosherBadge" class="px-2.5 py-1 rounded-full text-xs font-extrabold border shrink-0">פרווה</span>
+          </div>
+
+          <!-- Manual Override Kosher Category Switcher -->
+          <div class="flex items-center justify-between bg-white/80 px-3 py-1.5 rounded-2xl border border-indigo-100">
+            <span class="text-[11px] font-bold text-slate-500">סיווג כשרות:</span>
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="overridePreviewKosher('בשרי')" id="ovKosher-בשרי" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition">בשרי</button>
+              <button type="button" onclick="overridePreviewKosher('חלבי')" id="ovKosher-חלבי" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition">חלבי</button>
+              <button type="button" onclick="overridePreviewKosher('פרווה')" id="ovKosher-פרווה" class="px-2.5 py-1 rounded-xl text-[11px] font-extrabold border transition">פרווה</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 text-center tabular-nums">
+            <div class="p-2 rounded-2xl bg-white border border-slate-200/80">
+              <span class="text-[10px] font-bold text-slate-400 block">פחמימות נטו</span>
+              <span id="previewNetCarbs" class="text-sm font-extrabold text-teal-700">0ג׳</span>
+            </div>
+            <div class="p-2 rounded-2xl bg-white border border-slate-200/80">
+              <span class="text-[10px] font-bold text-slate-400 block">חלבון</span>
+              <span id="previewProtein" class="text-sm font-extrabold text-slate-900">0ג׳</span>
+            </div>
+            <div class="p-2 rounded-2xl bg-white border border-slate-200/80">
+              <span class="text-[10px] font-bold text-slate-400 block">קלוריות</span>
+              <span id="previewCalories" class="text-sm font-extrabold text-slate-900">0</span>
+            </div>
+          </div>
+
+          <p id="previewFeedbackText" class="text-xs text-slate-700 bg-white/90 p-3 rounded-2xl border border-indigo-100 leading-relaxed"></p>
+
+          <button type="button" onclick="confirmSaveAnalyzedMeal()" class="w-full py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm shadow-sm transition active:scale-95">
+            שמור ביומן הארוחות ✓
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB B: 1-TAP KOSHER QUICK MEALS -->
+      <div id="mealSheetTab-quick" class="hidden space-y-2.5">
+        <p class="text-xs text-slate-500">בחר ארוחה כשרה להוספה בנגיעה (כולל התאמות אישיות שה-AI יצר עבורך):</p>
+        <div id="quickFavoritesGrid" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: INSTALL ON PHONE + BACKUP                                         -->
+  <!-- ======================================================================= -->
+  <div id="installModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-teal-600 text-white font-extrabold text-lg flex items-center justify-center">📲</div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900 font-display">התקנה בטלפון וגיבוי</h3>
+            <p class="text-xs text-slate-500">מסך הבית, עבודה גם בלי רשת, עדכונים אוטומטיים</p>
+          </div>
+        </div>
+        <button onclick="closeInstallModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <div id="installedNotice" class="hidden p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900">✅ האפליקציה כבר מותקנת ורצה במסך מלא.</div>
+
+      <button id="androidNativeInstallBtn" onclick="triggerNativePwaInstall()" class="hidden w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm transition active:scale-95">
+        ⚡ התקן כאפליקציה למסך הבית עכשיו
+      </button>
+
+      <div class="p-3.5 rounded-2xl bg-teal-50/70 border border-teal-200 space-y-2">
+        <div class="text-xs font-extrabold text-teal-950">🤖 אנדרואיד (Chrome)</div>
+        <p class="text-xs text-slate-700 leading-relaxed">⋮ למעלה ← <b>״התקן אפליקציה״</b> / <b>״הוספה למסך הבית״</b>.</p>
+        <div class="text-xs font-extrabold text-teal-950 pt-1">🍎 אייפון (Safari)</div>
+        <p class="text-xs text-slate-700 leading-relaxed">כפתור השיתוף ⬆︎ ← <b>״הוסף למסך הבית״</b>.</p>
+      </div>
+
+      <div class="pt-2 border-t border-slate-100 space-y-2">
+        <p class="text-[11px] text-slate-500 leading-snug">☁️ סנכרון בין מכשירים (אופציונלי) וגיבוי ידני לקובץ:</p>
+        <button onclick="closeInstallModal(); handleHeaderCloudClick();" class="w-full py-2.5 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition active:scale-95">
+          <span id="installModalCloudBtnText">☁️ סנכרון ענן</span>
+        </button>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="exportJsonBackup()" class="py-2.5 px-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition active:scale-95">
+            <span>💾</span><span>ייצוא גיבוי (JSON)</span>
+          </button>
+          <label class="cursor-pointer py-2.5 px-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition active:scale-95">
+            <span>📂</span><span>שחזור גיבוי (JSON)</span>
+            <input type="file" accept=".json,application/json" onchange="importJsonBackup(event)" class="hidden" />
+          </label>
+        </div>
+        <button onclick="checkForAppUpdate()" class="w-full py-2.5 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition active:scale-95">
+          🔄 בדוק עדכון גרסה · <span id="appVersionLabel" dir="ltr" class="font-mono">v?</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: CLOUD ACCOUNT & GOOGLE SIGN-IN SYNC MANAGER                      -->
+  <!-- ======================================================================= -->
+  <div id="cloudAccountModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-4 animate-fade-up">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 text-xl flex items-center justify-center">☁️</div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900 font-display">סנכרון ענן וגיבוי אישי</h3>
+            <p class="text-xs text-slate-500">שמירת כל הנתונים שלך בין גרסאות ומכשירים</p>
+          </div>
+        </div>
+        <button onclick="closeCloudAccountModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <div id="cloudAccountStatusCard" class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+        <div class="font-extrabold text-slate-900" id="cloudModalUserTitle">מצב אורח (זמני)</div>
+        <p class="text-slate-600 leading-relaxed" id="cloudModalUserDesc">
+          התחבר בלחיצה אחת עם Google כדי שהמשקל, הארוחות, זיכרון ה-AI והגדרות הכשרות יישמרו תמיד בענן — גם כשתעדכן לגרסה חדשה.
+        </p>
+        <div class="text-[10px] font-mono text-slate-400 pt-1 break-all" id="cloudModalUidLabel"></div>
+      </div>
+
+      <button id="googleSignInActionBtn" onclick="signInWithGoogleAccount()" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-sm flex items-center justify-center gap-2 transition active:scale-95">
+        <span>🔐</span>
+        <span>התחבר עם Google לשמירה בענן</span>
+      </button>
+
+      <button id="googleSignOutActionBtn" onclick="signOutFromGoogleAccount()" class="hidden w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95">
+        התנתק מחשבון Google
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: SETTINGS (KOSHER WAIT TIMER & DAILY TARGETS)                     -->
+  <!-- ======================================================================= -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-4 animate-fade-up max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900 font-display">הגדרות כשרות ויעדים</h3>
+        <button onclick="closeSettingsModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <div class="space-y-3 text-sm tabular-nums">
+        <div>
+          <label for="settingKosherWaitSelect" class="block text-xs font-bold text-slate-700 mb-1">זמן המתנה בין בשרי לחלבי</label>
+          <select id="settingKosherWaitSelect" class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-extrabold text-xs focus:outline-none focus:ring-2 focus:ring-teal-500">
+            <option value="6">6 שעות (ברירת מחדל)</option>
+            <option value="3">3 שעות</option>
+            <option value="0">ללא טיימר המתנה</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="settingCarbsInput" class="block text-xs font-bold text-slate-700 mb-1">יעד פחמימות נטו יומי (גרם)</label>
+          <input type="number" id="settingCarbsInput" min="25" max="150" step="5" class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+
+        <div>
+          <label for="settingProteinInput" class="block text-xs font-bold text-slate-700 mb-1">יעד חלבון יומי (גרם)</label>
+          <input type="number" id="settingProteinInput" min="60" max="250" step="5" class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 space-y-1.5">
+        <label for="settingGeminiKeyInput" class="block text-xs font-bold text-slate-700">מפתח Gemini API (ל-AI: ניתוח ארוחות, מאמן)</label>
+        <input type="password" id="settingGeminiKeyInput" dir="ltr" autocomplete="off" placeholder="AIza..." class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        <p class="text-[10px] text-slate-400 leading-snug">נשמר רק במכשיר הזה (לא בענן ולא בגיבוי). בלי מפתח האפליקציה עובדת עם ניתוח מקומי פשוט.</p>
+      </div>
+
+      <button onclick="saveDailyTargetSettings()" class="w-full py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm transition active:scale-95">
+        שמור הגדרות
+      </button>
+
+      <!-- Utility Actions: Demo Data & Inline Reset -->
+      <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+        <button onclick="loadDemoData(); closeSettingsModal();" class="flex-1 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold transition">
+          ✨ טען נתוני הדגמה
+        </button>
+        <button onclick="promptInlineReset()" class="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-extrabold transition">
+          אפס הכל
+        </button>
+      </div>
+
+      <div id="settingsInlineResetConfirm" class="hidden p-3 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-2">
+        <span class="text-xs font-bold text-rose-800">למחוק את כל הנתונים?</span>
+        <div class="flex items-center gap-1.5">
+          <button onclick="executeFullReset()" class="px-3 py-1 rounded-xl bg-rose-600 text-white text-xs font-bold">כן, אפס</button>
+          <button onclick="cancelInlineReset()" class="px-3 py-1 rounded-xl bg-white text-slate-700 border border-slate-200 text-xs font-bold">ביטול</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: REMINDERS / NOTIFICATIONS                                         -->
+  <!-- ======================================================================= -->
+  <div id="notifyModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-amber-50 text-xl flex items-center justify-center">🔔</div>
+          <div>
+            <h3 class="text-base font-extrabold text-slate-900 font-display">תזכורות מעודדות</h3>
+            <p class="text-xs text-slate-500">שקט אוטומטי משישי 14:00 עד מוצ״ש</p>
+          </div>
+        </div>
+        <button onclick="closeNotifyModal()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center">✕</button>
+      </div>
+
+      <div id="notifyStatusBox" class="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 leading-relaxed"></div>
+
+      <button id="notifyToggleBtn" onclick="toggleNotifications()" class="w-full py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm shadow-sm transition active:scale-95"></button>
+
+      <div id="notifySlotsList" class="space-y-2"></div>
+
+      <button onclick="sendTestNotification()" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95">📨 שלח התראת ניסיון</button>
+
+      <p class="text-[10px] text-slate-400 leading-snug">
+        ההתראות נשלחות כשהאפליקציה פתוחה, וברקע ע״י Chrome באנדרואיד (אפליקציה מותקנת) — השעה המדויקת לא מובטחת כשהאפליקציה סגורה. תזכורות לא נשלחות על דברים שכבר עשית (למשל ארוחה שתועדה).
+      </p>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL: FIRST-RUN ONBOARDING                                              -->
+  <!-- ======================================================================= -->
+  <div id="onboardModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl space-y-3.5 animate-sheet max-h-[92vh] overflow-y-auto">
+      <div class="text-center space-y-1">
+        <div class="text-3xl">🌿</div>
+        <h3 class="text-lg font-extrabold text-slate-900 font-display">ברוך הבא למאוזן AI</h3>
+        <p class="text-xs text-slate-500">כמה פרטים קטנים ומתחילים. הכל ניתן לשינוי אחר כך.</p>
+      </div>
+      <div>
+        <label for="obName" class="block text-xs font-bold text-slate-700 mb-1">איך לקרוא לך? (לא חובה)</label>
+        <input type="text" id="obName" maxlength="24" class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+      </div>
+      <div class="grid grid-cols-3 gap-2 tabular-nums">
+        <div>
+          <label for="obHeight" class="block text-[11px] font-bold text-slate-500 mb-1">גובה (ס״מ)</label>
+          <input type="number" id="obHeight" inputmode="numeric" min="120" max="230" value="175" class="w-full px-2.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-extrabold focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+        <div>
+          <label for="obWeight" class="block text-[11px] font-bold text-slate-500 mb-1">משקל היום</label>
+          <input type="number" id="obWeight" inputmode="decimal" step="0.1" min="40" max="250" value="90" class="w-full px-2.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-extrabold focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+        <div>
+          <label for="obTarget" class="block text-[11px] font-bold text-slate-500 mb-1">משקל יעד</label>
+          <input type="number" id="obTarget" inputmode="decimal" step="0.1" min="40" max="250" value="80" class="w-full px-2.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-extrabold focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+      </div>
+      <label class="flex items-start gap-2 p-3 rounded-2xl bg-amber-50 border border-amber-200 cursor-pointer">
+        <input type="checkbox" id="obNotify" checked class="mt-0.5" />
+        <span class="text-xs text-amber-950 font-bold leading-snug">🔔 שלחו לי תזכורות מעודדות במהלך היום (שקט אוטומטי בשבת)</span>
+      </label>
+      <button onclick="completeOnboarding()" class="w-full py-3.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm shadow-sm transition active:scale-95">בוא נתחיל 🚀</button>
+      <button onclick="skipOnboarding()" class="w-full py-1 text-xs font-bold text-slate-400 hover:text-slate-600">דלג, אגדיר אחר כך</button>
+    </div>
+  </div>
+
+  <script src="./notify-core.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
