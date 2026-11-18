@@ -934,6 +934,12 @@
         <p class="text-[10px] text-slate-400 leading-snug">נשמר רק במכשיר הזה (לא בענן ולא בגיבוי). בלי מפתח האפליקציה עובדת עם ניתוח מקומי פשוט.</p>
       </div>
 
+      <div class="pt-3 border-t border-slate-100 space-y-1.5">
+        <label for="settingDriveClientInput" class="block text-xs font-bold text-slate-700">גיבוי אוטומטי ל-Drive: Google Client ID (אופציונלי)</label>
+        <input type="text" id="settingDriveClientInput" dir="ltr" autocomplete="off" placeholder="123-abc.apps.googleusercontent.com" class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        <p class="text-[10px] text-slate-400 leading-snug">עם מזהה, הגיבוי השבועי נשמר ישירות ב-Drive בלחיצה אחת, בקובץ אחד שמתעדכן. בלי מזהה: שיתוף ידני.</p>
+      </div>
+
       <button onclick="saveDailyTargetSettings()" class="w-full py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-sm transition active:scale-95">
         שמור הגדרות
       </button>
@@ -1067,7 +1073,7 @@
   <script>
     // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
     (function () {
-      var EXPECT = 'v1.5.0';
+      var EXPECT = 'v1.6.0';
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.__APP_VERSION === EXPECT) return;

@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.5.0';
+window.__APP_VERSION = 'v1.6.0';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -221,6 +221,8 @@ window.__APP_VERSION = 'v1.5.0';
     const STORE = 'kv';
     const STATE_KEY = 'state';
     const GEMINI_KEY_STORAGE = 'meuzan_gemini_key';
+    const DRIVE_CLIENT_STORAGE = 'meuzan_drive_client';
+    const DRIVE_FILE_STORAGE = 'meuzan_drive_file';
 
     function idbOpen() {
       return new Promise((resolve, reject) => {
@@ -627,13 +629,83 @@ window.__APP_VERSION = 'v1.5.0';
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
             <div class="text-sm font-extrabold text-amber-900">🗂️ הגיע זמן הגיבוי השבועי</div>
-            <p class="text-[11px] text-amber-800 mt-0.5">לחיצה אחת, ובחירה ב״Drive״ ברשימת השיתוף</p>
+            <p class="text-[11px] text-amber-800 mt-0.5">${getDriveClient() ? 'לחיצה אחת ונשמר ישירות ב-Drive' : 'לחיצה אחת, ובחירה ב״Drive״ ברשימת השיתוף'}</p>
           </div>
           <button onclick="backupToDrive()" class="shrink-0 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs active:scale-95">שמור בדרייב</button>
         </div>`;
     }
 
+    function getDriveClient() { try { return localStorage.getItem(DRIVE_CLIENT_STORAGE) || ''; } catch (e) { return ''; } }
+
+    let gisPromise = null;
+    function loadGis() {
+      if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+      if (gisPromise) return gisPromise;
+      gisPromise = new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://accounts.google.com/gsi/client';
+        sc.onload = () => resolve();
+        sc.onerror = () => { gisPromise = null; reject(new Error('gis_load')); };
+        document.head.appendChild(sc);
+      });
+      return gisPromise;
+    }
+    function getDriveToken(interactive) {
+      return loadGis().then(() => new Promise((resolve, reject) => {
+        const tc = google.accounts.oauth2.initTokenClient({
+          client_id: getDriveClient(),
+          scope: 'https://www.googleapis.com/auth/drive.file',
+          callback: (r) => (r && r.access_token ? resolve(r.access_token) : reject(new Error((r && r.error) || 'no_token'))),
+          error_callback: (e) => reject(new Error((e && e.type) || 'popup')),
+        });
+        tc.requestAccessToken({ prompt: interactive ? '' : 'none' });
+      }));
+    }
+    // העלאה ל-Drive: קובץ אחד קבוע ("מאוזן AI - גיבוי.json") שמתעדכן. ל-Drive יש היסטוריית גרסאות.
+    async function uploadToDrive(token, json) {
+      const auth = { Authorization: 'Bearer ' + token };
+      let id = '';
+      try { id = localStorage.getItem(DRIVE_FILE_STORAGE) || ''; } catch (e) {}
+      if (id) {
+        const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+          method: 'PATCH', headers: { ...auth, 'Content-Type': 'application/json' }, body: json,
+        });
+        if (r.ok) return true;
+        if (r.status !== 404) throw new Error('drive_' + r.status);
+      }
+      const boundary = 'meuzan' + Date.now();
+      const meta = { name: 'מאוזן AI - גיבוי.json', mimeType: 'application/json' };
+      const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${json}\r\n--${boundary}--`;
+      const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+        method: 'POST', headers: { ...auth, 'Content-Type': 'multipart/related; boundary=' + boundary }, body,
+      });
+      if (!r.ok) throw new Error('drive_' + r.status);
+      const j = await r.json();
+      try { localStorage.setItem(DRIVE_FILE_STORAGE, j.id); } catch (e) {}
+      return true;
+    }
+    async function autoDriveBackup(interactive) {
+      if (!getDriveClient() || !navigator.onLine) return false;
+      try {
+        await flushLocalSave();
+        const json = JSON.stringify(state, (k, v) => (k === 'photo' ? null : v));
+        const token = await getDriveToken(interactive);
+        await uploadToDrive(token, json);
+        state.lastBackupAt = Date.now();
+        saveLocalOnly();
+        renderAll();
+        showToast('☁️ הגיבוי נשמר ב-Drive');
+        return true;
+      } catch (e) {
+        if (interactive) showToast('גיבוי ל-Drive נכשל. נסה שוב או שמור דרך השיתוף');
+        return false;
+      }
+    }
+
     async function backupToDrive() {
+      if (getDriveClient()) {
+        if (await autoDriveBackup(true)) return;
+      }
       try { await flushLocalSave(); } catch (e) {}
       const json = JSON.stringify(state, (k, v) => (k === 'photo' ? null : v));
       const name = `meuzan-backup-${getTodayKey()}.json`;
@@ -2181,6 +2253,7 @@ ${memoryPrompt}
       document.getElementById('settingCarbsInput').value = state.targets.dailyCarbLimit;
       document.getElementById('settingProteinInput').value = state.targets.dailyProteinTarget;
       document.getElementById('settingGeminiKeyInput').value = getGeminiKey();
+      document.getElementById('settingDriveClientInput').value = getDriveClient();
       cancelInlineReset();
       document.getElementById('settingsModal').classList.remove('hidden');
     }
@@ -2202,6 +2275,9 @@ ${memoryPrompt}
         if (keyVal) localStorage.setItem(GEMINI_KEY_STORAGE, keyVal);
         else localStorage.removeItem(GEMINI_KEY_STORAGE);
         noKeyToastShown = false;
+        const dc = document.getElementById('settingDriveClientInput').value.trim();
+        if (dc) localStorage.setItem(DRIVE_CLIENT_STORAGE, dc);
+        else { localStorage.removeItem(DRIVE_CLIENT_STORAGE); localStorage.removeItem(DRIVE_FILE_STORAGE); }
       } catch (e) {}
 
       saveState();
@@ -3901,6 +3977,7 @@ ${memoryPrompt}
       setTimeout(maybeShowOnboarding, 500);
       setTimeout(offerPurgeDemo, 1500);
       setTimeout(resumePendingMeals, 2500);
+      setTimeout(() => { if (getDriveClient() && window.MeuzanNotify && MeuzanNotify.backupDue(state, new Date())) autoDriveBackup(false); }, 5000);
       window.addEventListener('online', resumePendingMeals);
       initFirebaseCloud();
       await loadNotifyCfg();

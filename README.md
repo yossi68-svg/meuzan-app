@@ -65,3 +65,11 @@
 - לחיצה על **שמור בדרייב** פותחת את רשימת השיתוף של אנדרואיד. בוחרים Drive ושומרים. הקובץ הוא JSON בלי תמונות.
 - שחזור: התקנה ← "שחזור גיבוי (JSON)".
 - גיבוי אוטומטי לגמרי, בלי לחיצה, דורש חיבור OAuth ל-Google Drive (פרויקט ב-Google Cloud). לא מוגדר כרגע.
+
+## גיבוי אוטומטי ל-Drive (v1.6.0, אופציונלי)
+1. console.cloud.google.com ← פרויקט חדש (בחשבון האישי) ← APIs ← הפעל Google Drive API.
+2. OAuth consent screen: External, הוסף את המייל שלך כ-Test user. Credentials ← Create OAuth client ID ← Web application.
+3. Authorized JavaScript origins: `https://yossi68-svg.github.io`
+4. הדבק את ה-Client ID באפליקציה: הגדרות ← "גיבוי אוטומטי ל-Drive".
+הגיבוי נכתב לקובץ אחד, "מאוזן AI - גיבוי.json", שמתעדכן (ל-Drive יש היסטוריית גרסאות). ההרשאה היא drive.file בלבד: האפליקציה רואה רק קובץ שהיא יצרה.
+אחרי 7 ימים האפליקציה מנסה לגבות בשקט בפתיחה. אם גוגל דורשת אישור, מופיע כרטיס עם כפתור שמגבה בלחיצה. בלי Client ID הכול נשאר כמו קודם (שיתוף ידני + התראה).
