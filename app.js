@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.4.1';
+window.__APP_VERSION = 'v1.4.2';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -3851,6 +3851,7 @@ ${memoryPrompt}
     async function boot() {
       initPwa();
       await loadLocalState();
+      state.activeTab = 'today'; // תמיד נפתחים על מסך הבית: הוספה מהירה במרחק נגיעה
       renderAll();
       updateNotifyHeaderIcon();
       if (isStandalone()) { const ib = document.getElementById('headerInstallBtn'); if (ib) ib.classList.add('hidden'); }

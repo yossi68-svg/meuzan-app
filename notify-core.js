@@ -128,6 +128,7 @@
         const rm = riskMinutes(state, now);
         if (rm === null) return;
         t = Math.max(0, rm - 30);
+        if (mins > rm) return; // אחרי תחילת שעת הסיכון התזכורת כבר לא רלוונטית
       }
       if (mins < t || mins - t > 180) return;
       if (cfg.lastFired[s.id] === key) return;
