@@ -187,6 +187,7 @@
         days: {
           [todayKey]: createEmptyDayRecord()
         },
+        cravings: [],
         weighIns: [
           {
             id: 'wi_init',
@@ -235,6 +236,7 @@
           adoptedUpgrades: Array.isArray(incoming.aiMemory?.adoptedUpgrades) ? incoming.aiMemory.adoptedUpgrades : []
         },
         days: incoming.days || base.days,
+        cravings: Array.isArray(incoming.cravings) ? incoming.cravings.slice(-500) : [],
         weighIns: Array.isArray(incoming.weighIns) ? incoming.weighIns : base.weighIns,
         chatHistory: Array.isArray(incoming.chatHistory) && incoming.chatHistory.length ? incoming.chatHistory : base.chatHistory
       };
@@ -2830,6 +2832,7 @@ ${memoryPrompt}
       document.getElementById('greetingTitle').textContent = name ? `${hello}, ${name}!` : `${hello}!`;
       document.getElementById('motivationText').textContent = getMotivation();
       document.getElementById('streakBadge').textContent = `🔥 ${computeStreak()}`;
+      renderGuardCard();
     }
 
     function celebrate(message, big = false) {
@@ -3101,7 +3104,7 @@ ${memoryPrompt}
               <input type="checkbox" ${c.on ? 'checked' : ''} onchange="setNotifySlot('${s.id}', 'on', this.checked)" />
               <span class="text-xs font-bold text-slate-800 truncate">${esc(s.label)}</span>
             </label>
-            <input type="time" value="${esc(c.time)}" onchange="setNotifySlot('${s.id}', 'time', this.value)" dir="ltr" class="px-2 py-1 rounded-xl bg-white border border-slate-200 text-xs font-extrabold tabular-nums" />
+            ${s.id === 'risk' ? '<span class="text-[10px] font-bold text-slate-400 shrink-0">אוטומטי</span>' : `<input type="time" value="${esc(c.time)}" onchange="setNotifySlot('${s.id}', 'time', this.value)" dir="ltr" class="px-2 py-1 rounded-xl bg-white border border-slate-200 text-xs font-extrabold tabular-nums" />`}
           </div>`;
       }).join('');
     }
@@ -3118,7 +3121,405 @@ ${memoryPrompt}
     // =========================================================================
     // 14. EXPOSE HANDLERS TO GLOBAL WINDOW FOR INLINE ONCLICK ATTRIBUTES
     // =========================================================================
+    // =========================================================================
+    // 13c. משמר מתוקים: SOS לחשק, יומן טריגרים, חוזק הרגל, בדיקת מוצר (Open Food Facts)
+    // =========================================================================
+    const CRAVING_TRIGGERS = [
+      { id: 'tired', label: '😴 עייפות' },
+      { id: 'stress', label: '😣 לחץ' },
+      { id: 'bored', label: '🥱 שעמום' },
+      { id: 'hungry', label: '🍽️ רעב אמיתי' },
+      { id: 'evening', label: '🌙 ערב / טלוויזיה' },
+      { id: 'social', label: '🎉 אירוע / חברה' },
+      { id: 'sight', label: '👀 ראיתי אותו' }
+    ];
+    const CRAVING_SWAPS = [
+      '🥤 כוס מים גדולה. לפעמים זה צמא בתחפושת',
+      '🍵 תה צמחים חם או קפה שחור, ומחכים',
+      '🥜 חופן אגוזים או שקדים (חלבון ושומן משביעים)',
+      '🧀 קוביית גבינה קשה',
+      '🍫 קוביית שוקולד מריר 85%+ וזהו (כדאי לבדוק כשרות)',
+      '🍓 כמה תותים או אוכמניות עם שמנת',
+      '🦷 צחצוח שיניים. מסמן לגוף שהאוכל נגמר'
+    ];
+    const SLIP_OPTIONS = [
+      { label: '🍫 קוביה או שתיים', carbs: 6 },
+      { label: '🍪 חטיף או ביסקוויט', carbs: 15 },
+      { label: '🍰 מנה גדולה / עוגה', carbs: 35 },
+      { label: 'לא לתעד כארוחה', carbs: 0 }
+    ];
+    let cravingTimer = null;
+    let cravingStart = 0;
+    let cravingTrigger = '';
+    const CRAVING_SECONDS = 600;
+
+    function cravingList() { return Array.isArray(state.cravings) ? state.cravings : []; }
+
+    function logCraving(outcome, carbs) {
+      const now = new Date();
+      state.cravings = cravingList().concat([{
+        id: 'cr_' + Date.now(),
+        ts: now.getTime(),
+        dateKey: getTodayKey(),
+        hour: now.getHours(),
+        trigger: cravingTrigger || '',
+        outcome,
+        carbs: Number(carbs) || 0
+      }]).slice(-500);
+    }
+
+    // חוזק הרגל בסגנון Loop Habit Tracker: ממוצע נע מעריכי. יום נקי מעלה, החלקה מורידה, בלי להיענש בחומרה על נפילה בודדת.
+    function computeCleanStats() {
+      const list = cravingList();
+      const dayKeys = Object.keys(state.days || {}).filter(k => {
+        const d = state.days[k];
+        return d && ((d.meals && d.meals.length) || d.waterLiters > 0);
+      });
+      const firsts = list.map(c => c.dateKey).concat(dayKeys).filter(Boolean).sort();
+      const todayKey = getTodayKey();
+      const startKey = firsts.length ? firsts[0] : todayKey;
+      const slipDays = new Set(list.filter(c => c.outcome === 'gave_in').map(c => c.dateKey));
+      const winDays = new Set(list.filter(c => c.outcome === 'resisted').map(c => c.dateKey));
+      const mult = Math.pow(0.5, Math.sqrt(1) / 13);
+      let score = 0.5; // התחלה נייטרלית, כדי שהמדד לא יתאפס אחרי החלקה אחת
+      let streak = 0;
+      const span = [];
+      for (let i = 0; i < 120; i++) {
+        const k = getOffsetDateKey(i);
+        span.push(k);
+        if (k <= startKey) break;
+      }
+      span.reverse().forEach(k => {
+        const slip = slipDays.has(k);
+        if (!slip && isSaturdayDateKey(k) && !winDays.has(k)) return; // שבת מוגנת
+        score = score * mult + (slip ? 0 : 1) * (1 - mult);
+      });
+      for (let i = 0; i < 120; i++) {
+        const k = getOffsetDateKey(i);
+        if (k < startKey || slipDays.has(k)) break;
+        streak++;
+      }
+      const wins = list.filter(c => c.outcome === 'resisted').length;
+      const slips = list.filter(c => c.outcome === 'gave_in').length;
+      const trig = {};
+      list.forEach(c => { if (c.trigger) trig[c.trigger] = (trig[c.trigger] || 0) + 1; });
+      const topTriggerId = Object.keys(trig).sort((a, b) => trig[b] - trig[a])[0];
+      const topTrigger = CRAVING_TRIGGERS.find(t => t.id === topTriggerId);
+      const rm = (window.MeuzanNotify && MeuzanNotify.riskMinutes) ? MeuzanNotify.riskMinutes(state) : null;
+      const week = [];
+      for (let i = 6; i >= 0; i--) {
+        const k = getOffsetDateKey(i);
+        week.push(slipDays.has(k) ? 'slip' : (k < startKey ? 'none' : (winDays.has(k) ? 'win' : 'clean')));
+      }
+      return { score: Math.round(score * 100), streak, wins, slips, topTrigger, riskMinutes: rm, week, total: list.length };
+    }
+
+    function fmtMinutes(m) {
+      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    }
+
+    function renderGuardCard() {
+      const host = document.getElementById('guardCard');
+      if (!host) return;
+      const st = computeCleanStats();
+      const dotCls = { win: 'bg-emerald-500', clean: 'bg-emerald-300', slip: 'bg-rose-400', none: 'bg-slate-200' };
+      const dots = st.week.map(w => `<span class="w-2.5 h-2.5 rounded-full ${dotCls[w]}"></span>`).join('');
+      let hint = 'כשיתחשק מתוק, לחץ על הכפתור לפני שאתה פותח את המזווה. 10 דקות סבלנות והחשק חולף.';
+      if (st.riskMinutes !== null) {
+        hint = `🛡️ שעת הסיכון שלך: סביב ${fmtMinutes(st.riskMinutes)}` + (st.topTrigger ? ` · טריגר מוביל: ${esc(st.topTrigger.label)}` : '') + '. תקבל תזכורת חצי שעה לפני.';
+      } else if (st.total > 0) {
+        hint = 'עוד כמה רישומים ואזהה את שעת הסיכון שלך ואזהיר אותך מראש.';
+      }
+      host.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-extrabold text-slate-900 font-display">🛡️ משמר מתוקים</div>
+          <div class="flex items-center gap-1" title="7 ימים אחרונים" dir="ltr">${dots}</div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center tabular-nums">
+          <div class="rounded-2xl bg-emerald-50 py-2"><div class="text-lg font-extrabold text-emerald-700">${st.streak}</div><div class="text-[10px] font-bold text-emerald-800">ימים נקיים</div></div>
+          <div class="rounded-2xl bg-teal-50 py-2"><div class="text-lg font-extrabold text-teal-700">${st.score}%</div><div class="text-[10px] font-bold text-teal-800">חוזק ההרגל</div></div>
+          <div class="rounded-2xl bg-amber-50 py-2"><div class="text-lg font-extrabold text-amber-700">${st.wins}</div><div class="text-[10px] font-bold text-amber-800">חשקים שעצרת</div></div>
+        </div>
+        <p class="text-[11px] text-slate-500 leading-relaxed">${hint}</p>
+        <button onclick="openCraving()" class="w-full py-3.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-sm shadow-sm transition active:scale-95">🍫 מתחשק לי משהו מתוק</button>
+        <button onclick="openProductCheck()" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition active:scale-95">🔎 בדוק מוצר לפני שאתה קונה (ברקוד)</button>`;
+    }
+
+    // ---------- SOS ----------
+    function openCraving() {
+      cravingTrigger = '';
+      cravingStart = Date.now();
+      const m = document.getElementById('cravingModal');
+      m.classList.remove('hidden');
+      renderCravingMain();
+      clearInterval(cravingTimer);
+      cravingTimer = setInterval(tickCraving, 500);
+      tickCraving();
+    }
+
+    function renderCravingMain() {
+      const swaps = CRAVING_SWAPS.map(t => `<li class="text-xs text-slate-700 leading-relaxed">${esc(t)}</li>`).join('');
+      const chips = CRAVING_TRIGGERS.map(t => `<button data-trig="${t.id}" onclick="setCravingTrigger('${t.id}')" class="trig-chip px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-700">${esc(t.label)}</button>`).join('');
+      document.getElementById('cravingBody').innerHTML = `
+        <div class="text-center space-y-1">
+          <div class="breath-circle mx-auto"><span id="breathText" class="text-xs font-extrabold text-white">שאיפה…</span></div>
+          <div id="cravingClock" class="text-3xl font-extrabold tabular-nums text-slate-900" dir="ltr">10:00</div>
+          <p id="cravingMsg" class="text-xs text-slate-500 leading-relaxed">חשק נמשך בדרך כלל 10–15 דקות ואז דועך. אתה לא חייב לפעול לפיו, רק לעבור אותו.</p>
+        </div>
+        <div class="rounded-2xl bg-teal-50 border border-teal-100 p-3 space-y-1.5">
+          <div class="text-xs font-extrabold text-teal-900">במקום, תנסה:</div>
+          <ul class="space-y-1 list-none">${swaps}</ul>
+        </div>
+        <div class="space-y-1.5">
+          <div class="text-xs font-extrabold text-slate-800">מה הדליק את החשק? (לא חובה, עוזר לי ללמוד אותך)</div>
+          <div class="flex flex-wrap gap-1.5">${chips}</div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="finishCraving('resisted')" class="py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition active:scale-95">💪 עמדתי בזה</button>
+          <button onclick="finishCraving('gave_in')" class="py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-sm transition active:scale-95">נכנעתי</button>
+        </div>`;
+    }
+
+    function setCravingTrigger(id) {
+      cravingTrigger = cravingTrigger === id ? '' : id;
+      document.querySelectorAll('#cravingBody .trig-chip').forEach(b => {
+        const on = b.getAttribute('data-trig') === cravingTrigger;
+        b.classList.toggle('bg-teal-600', on);
+        b.classList.toggle('text-white', on);
+        b.classList.toggle('border-teal-600', on);
+      });
+    }
+
+    function tickCraving() {
+      const clock = document.getElementById('cravingClock');
+      if (!clock) return;
+      const left = Math.max(0, CRAVING_SECONDS - Math.floor((Date.now() - cravingStart) / 1000));
+      clock.textContent = `${String(Math.floor(left / 60)).padStart(2, '0')}:${String(left % 60).padStart(2, '0')}`;
+      const bt = document.getElementById('breathText');
+      if (bt) bt.textContent = Math.floor((Date.now() - cravingStart) / 4000) % 2 === 0 ? 'שאיפה…' : 'נשיפה…';
+      if (left === 0) {
+        const msg = document.getElementById('cravingMsg');
+        if (msg && !msg.dataset.done) {
+          msg.dataset.done = '1';
+          msg.textContent = '🎉 עברו 10 דקות. הגל כבר ירד. איך מרגיש עכשיו?';
+          try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (e) {}
+        }
+      }
+    }
+
+    function closeCraving() {
+      clearInterval(cravingTimer);
+      cravingTimer = null;
+      document.getElementById('cravingModal').classList.add('hidden');
+    }
+
+    function finishCraving(outcome) {
+      if (outcome === 'resisted') {
+        logCraving('resisted', 0);
+        saveState();
+        closeCraving();
+        renderAll();
+        const n = cravingList().filter(c => c.outcome === 'resisted').length;
+        celebrate(`💪 עצרת חשק! זה כבר ניצחון מספר ${n}`, n % 5 === 0);
+        return;
+      }
+      clearInterval(cravingTimer);
+      const opts = SLIP_OPTIONS.map((o, i) => `<button onclick="confirmSlip(${i})" class="w-full py-3 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-sm font-extrabold text-slate-800 transition active:scale-95">${esc(o.label)}${o.carbs ? ` · כ-${o.carbs}ג׳ פחמימה` : ''}</button>`).join('');
+      document.getElementById('cravingBody').innerHTML = `
+        <div class="text-center space-y-1">
+          <div class="text-3xl">🌿</div>
+          <div class="text-sm font-extrabold text-slate-900">זה קורה, ואין פה שיפוטיות.</div>
+          <p class="text-xs text-slate-500 leading-relaxed">רישום כנה שווה יותר מיום מושלם. מה אכלת? (הערכה גסה מספיקה)</p>
+        </div>
+        <div class="space-y-2">${opts}</div>`;
+    }
+
+    function confirmSlip(i) {
+      const o = SLIP_OPTIONS[i];
+      if (!o) return;
+      logCraving('gave_in', o.carbs);
+      if (o.carbs > 0) {
+        const day = ensureDayRecord(getTodayKey());
+        const now = new Date();
+        day.meals.unshift({
+          id: 'ml_' + Date.now(),
+          time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+          timestamp: Date.now(),
+          photo: null,
+          name: 'נשנוש מתוק',
+          carbs: o.carbs,
+          protein: 0,
+          calories: o.carbs * 5,
+          kosherType: 'פרווה',
+          status: 'high',
+          feedback: 'נרשם מכפתור החשק',
+          rating: null
+        });
+      }
+      saveState();
+      closeCraving();
+      renderAll();
+      showToast('נרשם. הארוחה הבאה היא התחלה חדשה 🌿');
+    }
+
+    // ---------- בדיקת מוצר (Open Food Facts) ----------
+    let scanStream = null;
+    let scanTimer = null;
+    let lastProduct = null;
+
+    function openProductCheck() {
+      document.getElementById('productModal').classList.remove('hidden');
+      document.getElementById('productResult').innerHTML = '';
+      document.getElementById('scanBtn').classList.toggle('hidden', !('BarcodeDetector' in window));
+    }
+
+    function closeProductCheck() {
+      stopScan();
+      document.getElementById('productModal').classList.add('hidden');
+    }
+
+    function stopScan() {
+      clearInterval(scanTimer);
+      scanTimer = null;
+      if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+      const v = document.getElementById('scanVideo');
+      if (v) { v.srcObject = null; v.classList.add('hidden'); }
+    }
+
+    async function startScan() {
+      try {
+        const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+        scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const v = document.getElementById('scanVideo');
+        v.srcObject = scanStream;
+        v.classList.remove('hidden');
+        await v.play();
+        scanTimer = setInterval(async () => {
+          try {
+            const codes = await detector.detect(v);
+            if (codes && codes[0] && codes[0].rawValue) {
+              const code = codes[0].rawValue;
+              stopScan();
+              document.getElementById('productQuery').value = code;
+              lookupBarcode(code);
+            }
+          } catch (e) {}
+        }, 300);
+      } catch (e) {
+        stopScan();
+        showToast('לא הצלחתי לפתוח מצלמה. אפשר להקליד ברקוד או שם מוצר');
+      }
+    }
+
+    function offFields() { return 'code,product_name,brands,nutriments,serving_size'; }
+
+    async function offFetch(url) {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 15000);
+      try {
+        const r = await fetch(url, { signal: ctl.signal });
+        if (!r.ok) throw new Error('http ' + r.status);
+        return await r.json();
+      } finally { clearTimeout(to); }
+    }
+
+    async function runProductSearch() {
+      const q = document.getElementById('productQuery').value.trim();
+      if (!q) { showToast('הקלד ברקוד או שם מוצר'); return; }
+      if (/^\d{6,14}$/.test(q)) return lookupBarcode(q);
+      const out = document.getElementById('productResult');
+      out.innerHTML = '<p class="text-xs text-slate-500 text-center py-3">מחפש…</p>';
+      try {
+        const data = await offFetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=8&fields=${offFields()}`);
+        const items = (data.products || []).filter(p => p && p.product_name);
+        window.__offItems = items;
+        if (!items.length) { out.innerHTML = '<p class="text-xs text-slate-500 text-center py-3">לא נמצאו תוצאות. נסה ברקוד או שם באנגלית.</p>'; return; }
+        out.innerHTML = items.map((p, i) => `<button onclick="showProduct(${i})" class="w-full text-start p-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200"><div class="text-xs font-extrabold text-slate-900 truncate">${esc(p.product_name)}</div><div class="text-[10px] text-slate-500 truncate">${esc(p.brands || '')}</div></button>`).join('');
+      } catch (e) {
+        out.innerHTML = '<p class="text-xs text-rose-600 text-center py-3">החיפוש לא זמין כרגע (שירות Open Food Facts). נסה ברקוד או מאוחר יותר.</p>';
+      }
+    }
+
+    async function lookupBarcode(code) {
+      const out = document.getElementById('productResult');
+      out.innerHTML = '<p class="text-xs text-slate-500 text-center py-3">בודק…</p>';
+      try {
+        const data = await offFetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${offFields()}`);
+        if (data.status !== 1 || !data.product) { out.innerHTML = '<p class="text-xs text-slate-500 text-center py-3">המוצר לא נמצא במאגר. נסה חיפוש לפי שם.</p>'; return; }
+        window.__offItems = [data.product];
+        showProduct(0);
+      } catch (e) {
+        out.innerHTML = '<p class="text-xs text-rose-600 text-center py-3">הבדיקה לא זמינה כרגע. נסה שוב בעוד רגע.</p>';
+      }
+    }
+
+    function showProduct(i) {
+      const p = (window.__offItems || [])[i];
+      if (!p) return;
+      const n = p.nutriments || {};
+      const num = (v) => (v === undefined || v === null || isNaN(Number(v))) ? null : Number(v);
+      const sugar = num(n.sugars_100g), carbs = num(n.carbohydrates_100g), fiber = num(n.fiber_100g) || 0;
+      const protein = num(n.proteins_100g), kcal = num(n['energy-kcal_100g']);
+      const out = document.getElementById('productResult');
+      if (carbs === null && sugar === null) {
+        out.innerHTML = `<p class="text-xs text-slate-500 text-center py-3">${esc(p.product_name || 'מוצר')}: אין במאגר נתוני פחמימות.</p>`;
+        return;
+      }
+      const net = Math.max(0, +((carbs ?? sugar) - fiber).toFixed(1));
+      const sg = sugar ?? 0;
+      let box = 'border-emerald-200 bg-emerald-50', txt = 'text-emerald-900', verdict = '✅ סוכר נמוך. אפשר לשקול.';
+      if (sg > 15) { box = 'border-rose-200 bg-rose-50'; txt = 'text-rose-900'; verdict = '🚨 מוצר מתוק מאוד. עדיף להשאיר על המדף.'; }
+      else if (sg > 5) { box = 'border-amber-200 bg-amber-50'; txt = 'text-amber-900'; verdict = '⚠️ סוכר בינוני. כמות קטנה בלבד.'; }
+      const limit = Number(state.targets.dailyCarbLimit) || 75;
+      lastProduct = { name: p.product_name || 'מוצר', net, protein: protein ?? 0, kcal: kcal ?? Math.round(net * 5) };
+      out.innerHTML = `
+        <div class="rounded-2xl border ${box} p-3 space-y-1.5">
+          <div class="text-sm font-extrabold text-slate-900">${esc(p.product_name || 'מוצר')}</div>
+          <div class="text-[10px] text-slate-500">${esc(p.brands || '')} · לכל 100 גרם</div>
+          <div class="grid grid-cols-3 gap-1.5 text-center tabular-nums">
+            <div class="rounded-xl bg-white py-1.5"><div class="text-sm font-extrabold">${sugar === null ? '?' : sugar}</div><div class="text-[9px] font-bold text-slate-500">סוכר ג׳</div></div>
+            <div class="rounded-xl bg-white py-1.5"><div class="text-sm font-extrabold">${net}</div><div class="text-[9px] font-bold text-slate-500">פחמימה נטו</div></div>
+            <div class="rounded-xl bg-white py-1.5"><div class="text-sm font-extrabold">${protein === null ? '?' : protein}</div><div class="text-[9px] font-bold text-slate-500">חלבון ג׳</div></div>
+          </div>
+          <p class="text-xs font-bold ${txt}">${verdict}</p>
+          ${sugar !== null ? `<p class="text-[11px] text-slate-600">100ג׳ = כ-${(sugar / 4).toFixed(1)} כפיות סוכר · ${Math.round(net / limit * 100)}% מיעד הפחמימות היומי שלך</p>` : ''}
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="productGrams" type="number" inputmode="numeric" value="30" min="1" dir="ltr" class="w-20 px-2 py-2 rounded-xl border border-slate-200 text-sm font-extrabold text-center" />
+          <span class="text-xs font-bold text-slate-600">גרם</span>
+          <button onclick="logProduct()" class="flex-1 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs transition active:scale-95">הוסף ליומן</button>
+        </div>
+        <button onclick="skipProduct()" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition active:scale-95">💪 החלטתי לא לקנות</button>`;
+    }
+
+    function logProduct() {
+      if (!lastProduct) return;
+      const g = Math.max(1, Number(document.getElementById('productGrams').value) || 30);
+      const f = g / 100;
+      finalizeMealLogging({
+        name: `${lastProduct.name} (${g}ג׳)`,
+        netCarbs: +(lastProduct.net * f).toFixed(1),
+        protein: +(lastProduct.protein * f).toFixed(1),
+        calories: Math.round(lastProduct.kcal * f),
+        kosherType: 'פרווה',
+        status: 'good',
+        wittyTip: 'נוסף מבדיקת מוצר. כדאי לוודא כשרות וסוג (חלבי/פרווה)'
+      });
+      closeProductCheck();
+    }
+
+    function skipProduct() {
+      cravingTrigger = 'sight';
+      logCraving('resisted', 0);
+      cravingTrigger = '';
+      saveState();
+      closeProductCheck();
+      renderAll();
+      celebrate('💪 החלטה מצוינת: מה שלא נכנס לעגלה לא נכנס לפה!', true);
+    }
+
     Object.assign(window, {
+      openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
       openShabbatHub,

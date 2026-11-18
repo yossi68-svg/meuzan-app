@@ -5,7 +5,8 @@
     { id: 'lunch',   def: '13:00', label: '🍽️ צהריים — תיעוד ארוחה' },
     { id: 'water',   def: '16:00', label: '💧 אחה״צ — מים' },
     { id: 'evening', def: '20:30', label: '🌙 ערב — סגירת יום' },
-    { id: 'motzei',  def: '20:30', label: '🕯️ מוצ״ש — סיכום שבת' }
+    { id: 'motzei',  def: '20:30', label: '🕯️ מוצ״ש — סיכום שבת' },
+    { id: 'risk',    def: 'auto',  label: '🛡️ שעת הסיכון שלך — תזכורת 30 דק׳ לפני (אוטומטי לפי יומן החשקים)' }
   ];
 
   const POOLS = {
@@ -28,6 +29,11 @@
     evening: [
       'סגירת יום ב-10 שניות: מה אכלת היום? ממשיכים ברצף 🔥',
       'עוד יום עבר. תעד, תנשום, ולך לישון טוב — שינה מורידה חשק למתוק 😴'
+    ],
+    risk: [
+      'שעת הסיכון שלך מתקרבת 🛡️ תכין תה או מים, ואם יתחשק — כפתור SOS באפליקציה ממתין לך',
+      'בעוד חצי שעה בדרך כלל מגיע החשק. עכשיו הזמן להכין חלופה מוכנה ולא להישאר מול המטבח 🍵',
+      'שים לב: זו השעה שבה בדרך כלל מתחשק מתוק. 10 דקות סבלנות והחשק חולף. אתה חזק מזה 💪'
     ],
     motzei: [
       'שבוע טוב! 🕯️ סיכום מוצ״ש ב-10 שניות — איך עברה השבת?',
@@ -64,6 +70,7 @@
       }
       return { title: 'בוקר טוב 🌿', body };
     }
+    if (slot === 'risk') return { title: 'שעת הסיכון מתקרבת 🛡️', body };
     if (slot === 'lunch') {
       if (meals.some((m) => (m.time || '00:00') >= '11:00')) return null;
       return { title: 'זמן לצהריים 🍽️', body };
@@ -81,6 +88,23 @@
   }
 
   // מחזיר רשימת התראות שהגיע זמנן ועוד לא נשלחו היום. מעדכן cfg.lastFired.
+  // שעת הסיכון: השעה שבה נרשמו הכי הרבה חשקים (לפחות 3 רישומים ב-60 הימים האחרונים). מחזיר דקות מחצות, או null.
+  function riskMinutes(state, now) {
+    const list = ((state && state.cravings) || []);
+    const since = (now ? now.getTime() : Date.now()) - 60 * 864e5;
+    const buckets = {};
+    let total = 0;
+    list.forEach((c) => {
+      if (!c || typeof c.hour !== 'number' || (c.ts || 0) < since) return;
+      buckets[c.hour] = (buckets[c.hour] || 0) + 1;
+      total++;
+    });
+    if (total < 3) return null;
+    let best = null;
+    Object.keys(buckets).forEach((h) => { if (best === null || buckets[h] > buckets[best]) best = h; });
+    return Number(best) * 60;
+  }
+
   function computeDue(cfg, state, now) {
     const out = [];
     if (!cfg || !cfg.enabled) return out;
@@ -96,7 +120,12 @@
       const c = (cfg.slots || {})[s.id] || { on: true, time: s.def };
       if (!c.on) return;
       if (s.id === 'motzei' ? dow !== 6 : dow === 6) return;
-      const t = toMinutes(c.time);
+      let t = toMinutes(c.time);
+      if (s.id === 'risk') {
+        const rm = riskMinutes(state, now);
+        if (rm === null) return;
+        t = Math.max(0, rm - 30);
+      }
       if (mins < t || mins - t > 180) return;
       if (cfg.lastFired[s.id] === key) return;
       const m = build(s.id, state, now, i);
@@ -106,5 +135,5 @@
     return out;
   }
 
-  root.MeuzanNotify = { SLOTS, computeDue, dateKey, pick };
+  root.MeuzanNotify = { SLOTS, computeDue, dateKey, pick, riskMinutes };
 })(typeof self !== 'undefined' ? self : window);

@@ -147,6 +147,9 @@
           <button onclick="newMotivation()" class="text-[11px] font-bold text-white/85 hover:text-white">עוד השראה ↻</button>
         </div>
 
+        <!-- משמר מתוקים -->
+        <div id="guardCard" class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-2.5"></div>
+
         <!-- 7-Day Interactive Date Strip with Automatic Shabbat Protection -->
         <div class="bg-white rounded-3xl p-2 border border-slate-200 shadow-card">
           <div id="sevenDayStrip" class="grid grid-cols-7 gap-1"></div>
@@ -1018,6 +1021,42 @@
       <button onclick="skipOnboarding()" class="w-full py-1 text-xs font-bold text-slate-400 hover:text-slate-600">דלג, אגדיר אחר כך</button>
     </div>
   </div>
+
+
+  <!-- SOS: חשק למתוק -->
+  <div id="cravingModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900 font-display">🍫 רגע לפני שפותחים את המזווה</h3>
+        <button onclick="closeCraving()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center" aria-label="סגור">✕</button>
+      </div>
+      <div id="cravingBody" class="space-y-3.5"></div>
+    </div>
+  </div>
+
+  <!-- בדיקת מוצר -->
+  <div id="productModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3 animate-fade-up max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900 font-display">🔎 בדיקת מוצר</h3>
+        <button onclick="closeProductCheck()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center" aria-label="סגור">✕</button>
+      </div>
+      <p class="text-[11px] text-slate-500">נתונים מ-Open Food Facts (מאגר פתוח; ייתכנו חוסרים בכיסוי של מוצרים ישראליים).</p>
+      <div class="flex gap-2">
+        <input id="productQuery" type="text" inputmode="search" placeholder="ברקוד או שם מוצר" onkeydown="if(event.key==='Enter')runProductSearch()" class="flex-1 min-w-0 px-3 py-2.5 rounded-2xl border border-slate-200 text-sm" />
+        <button onclick="runProductSearch()" class="px-4 rounded-2xl bg-teal-600 text-white font-extrabold text-sm active:scale-95">חפש</button>
+      </div>
+      <button id="scanBtn" onclick="startScan()" class="hidden w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs active:scale-95">📷 סרוק ברקוד במצלמה</button>
+      <video id="scanVideo" class="hidden w-full rounded-2xl bg-black" playsinline muted></video>
+      <div id="productResult" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <style>
+    .breath-circle { width: 96px; height: 96px; border-radius: 9999px; background: radial-gradient(circle at 30% 30%, #2dd4bf, #0d9488); display: flex; align-items: center; justify-content: center; animation: breathe 8s ease-in-out infinite; }
+    @keyframes breathe { 0%, 100% { transform: scale(0.8); } 50% { transform: scale(1.12); } }
+    @media (prefers-reduced-motion: reduce) { .breath-circle { animation: none; } }
+  </style>
 
   <script src="./notify-core.js"></script>
   <script type="module" src="./app.js"></script>
