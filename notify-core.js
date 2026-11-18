@@ -6,6 +6,7 @@
     { id: 'water',   def: '16:00', label: '💧 אחה״צ — מים' },
     { id: 'evening', def: '20:30', label: '🌙 ערב — סגירת יום' },
     { id: 'motzei',  def: '20:30', label: '🕯️ מוצ״ש — סיכום שבת' },
+    { id: 'backup',  def: '10:00', label: '🗂️ גיבוי שבועי לדרייב (רק כשהגיע הזמן)' },
     { id: 'risk',    def: 'auto',  label: '🛡️ שעת הסיכון שלך — תזכורת 30 דק׳ לפני (אוטומטי לפי יומן החשקים)' }
   ];
 
@@ -34,6 +35,10 @@
       'שעת הסיכון שלך מתקרבת 🛡️ תכין תה או מים, ואם יתחשק — כפתור SOS באפליקציה ממתין לך',
       'בעוד חצי שעה בדרך כלל מגיע החשק. עכשיו הזמן להכין חלופה מוכנה ולא להישאר מול המטבח 🍵',
       'שים לב: זו השעה שבה בדרך כלל מתחשק מתוק. 10 דקות סבלנות והחשק חולף. אתה חזק מזה 💪'
+    ],
+    backup: [
+      'הגיע זמן הגיבוי השבועי 🗂️ לחיצה אחת ושומרים את היומן בגוגל דרייב',
+      'שבוע של תיעוד שווה גיבוי! פתח את האפליקציה ולחץ ״שמור בדרייב״ ⏱️ 10 שניות'
     ],
     motzei: [
       'שבוע טוב! 🕯️ סיכום מוצ״ש ב-10 שניות — איך עברה השבת?',
@@ -73,6 +78,7 @@
       }
       return { title: 'בוקר טוב 🌿', body };
     }
+    if (slot === 'backup') return backupDue(state, now) ? { title: 'גיבוי שבועי 🗂️', body } : null;
     if (slot === 'risk') return { title: 'שעת הסיכון מתקרבת 🛡️', body };
     if (slot === 'lunch') {
       if (meals.some((m) => (m.time || '00:00') >= '11:00')) return null;
@@ -108,6 +114,17 @@
     return Number(best) * 60;
   }
 
+  // גיבוי שבועי: חלפו 7 ימים מהגיבוי האחרון, או מתחילת התיעוד אם עוד לא גובה.
+  function backupDue(state, now) {
+    const t = now ? now.getTime() : Date.now();
+    const last = Number(state && state.lastBackupAt) || 0;
+    if (last) return t - last >= 7 * 864e5;
+    const keys = Object.keys((state && state.days) || {}).filter((k) => ((state.days[k] || {}).meals || []).length).sort();
+    if (!keys.length) return false;
+    const p = keys[0].split('-').map(Number);
+    return t - new Date(p[0], p[1] - 1, p[2]).getTime() >= 7 * 864e5;
+  }
+
   function computeDue(cfg, state, now) {
     const out = [];
     if (!cfg || !cfg.enabled) return out;
@@ -139,5 +156,5 @@
     return out;
   }
 
-  root.MeuzanNotify = { SLOTS, computeDue, dateKey, pick, riskMinutes };
+  root.MeuzanNotify = { SLOTS, computeDue, dateKey, pick, riskMinutes, backupDue };
 })(typeof self !== 'undefined' ? self : window);

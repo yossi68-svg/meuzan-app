@@ -147,6 +147,8 @@
           <button onclick="newMotivation()" class="text-[11px] font-bold text-white/85 hover:text-white py-2">עוד השראה ↻</button>
         </div>
 
+        <div id="backupCard" class="hidden rounded-3xl p-3.5 bg-amber-50 border border-amber-200"></div>
+
         <!-- משמר מתוקים -->
         <div id="guardCard" class="bg-white rounded-3xl p-4 border border-slate-200 shadow-card space-y-2.5"></div>
 
@@ -844,6 +846,7 @@
           <span id="installModalCloudBtnText">☁️ סנכרון ענן</span>
         </button>
         <div class="grid grid-cols-2 gap-2">
+          <button onclick="backupToDrive()" class="py-2.5 px-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-[11px] flex items-center justify-center gap-1 transition active:scale-95"><span>🗂️</span><span>שמור בדרייב</span></button>
           <button onclick="exportJsonBackup()" class="py-2.5 px-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition active:scale-95">
             <span>💾</span><span>ייצוא גיבוי (JSON)</span>
           </button>
@@ -1064,7 +1067,7 @@
   <script>
     // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
     (function () {
-      var EXPECT = 'v1.4.2';
+      var EXPECT = 'v1.5.0';
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.__APP_VERSION === EXPECT) return;

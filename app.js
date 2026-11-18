@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.4.2';
+window.__APP_VERSION = 'v1.5.0';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -614,6 +614,48 @@ window.__APP_VERSION = 'v1.4.2';
       } catch (e) {
         showToast('אין חיבור לרשת — נסה שוב מאוחר יותר');
       }
+    }
+
+    // ---------- גיבוי שבועי לגוגל דרייב (שיתוף קובץ ← "שמור בדרייב") ----------
+    function renderBackupCard() {
+      const host = document.getElementById('backupCard');
+      if (!host) return;
+      const due = window.MeuzanNotify && MeuzanNotify.backupDue(state, new Date());
+      host.classList.toggle('hidden', !due);
+      if (!due) { host.innerHTML = ''; return; }
+      host.innerHTML = `
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-sm font-extrabold text-amber-900">🗂️ הגיע זמן הגיבוי השבועי</div>
+            <p class="text-[11px] text-amber-800 mt-0.5">לחיצה אחת, ובחירה ב״Drive״ ברשימת השיתוף</p>
+          </div>
+          <button onclick="backupToDrive()" class="shrink-0 px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs active:scale-95">שמור בדרייב</button>
+        </div>`;
+    }
+
+    async function backupToDrive() {
+      try { await flushLocalSave(); } catch (e) {}
+      const json = JSON.stringify(state, (k, v) => (k === 'photo' ? null : v));
+      const name = `meuzan-backup-${getTodayKey()}.json`;
+      const tryShare = async (type) => {
+        const file = new File([json], name, { type });
+        if (!navigator.canShare || !navigator.canShare({ files: [file] })) return 'unsupported';
+        try {
+          await navigator.share({ files: [file], title: 'גיבוי מאוזן AI' });
+          return 'ok';
+        } catch (e) { return e && e.name === 'AbortError' ? 'cancel' : 'unsupported'; }
+      };
+      let r = await tryShare('application/json');
+      if (r === 'unsupported') r = await tryShare('text/plain');
+      if (r === 'cancel') return;
+      if (r === 'unsupported') {
+        exportJsonBackup();
+        showToast('הקובץ ירד לטלפון. העלה אותו ל-Drive ידנית');
+      }
+      state.lastBackupAt = Date.now();
+      saveLocalOnly();
+      renderAll();
+      if (r === 'ok') showToast('🗂️ הגיבוי נשלח. ודא שנשמר ב-Drive');
     }
 
     function exportJsonBackup() {
@@ -2913,6 +2955,7 @@ ${memoryPrompt}
       document.getElementById('streakBadge').textContent = `🔥 ${computeStreak()}`;
       renderGuardCard();
       renderWaistCard();
+      renderBackupCard();
     }
 
     function celebrate(message, big = false) {
@@ -3601,7 +3644,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
-      openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
+      backupToDrive, openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
       openShabbatHub,
