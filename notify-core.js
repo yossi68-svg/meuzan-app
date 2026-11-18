@@ -62,11 +62,14 @@
 
     if (slot === 'morning') {
       const w = (state && state.weighIns) || [];
-      const last = w.length ? w[w.length - 1].date : null;
-      if (last) {
-        const p = last.split('-').map(Number);
+      const wa = (state && state.waist) || [];
+      const dates = w.filter((x) => x.id !== 'wi_init').map((x) => x.date).concat(wa.map((x) => x.date)).sort();
+      const last = dates.length ? dates[dates.length - 1] : null;
+      const ref = last || (w.length ? w[0].date : null);
+      if (ref) {
+        const p = ref.split('-').map(Number);
         const days = Math.floor((now - new Date(p[0], p[1] - 1, p[2])) / 864e5);
-        if (days >= 7) body += ' ⚖️ עבר שבוע מהשקילה האחרונה — שקילה קצרה?';
+        if (days >= 7) body += ' 📏 עבר שבוע מהמדידה האחרונה. משקל או היקף מותן (30 שניות)?';
       }
       return { title: 'בוקר טוב 🌿', body };
     }

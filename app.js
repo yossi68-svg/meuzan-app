@@ -145,6 +145,7 @@
           [todayKey]: createEmptyDayRecord()
         },
         cravings: [],
+        waist: [],
         weighIns: [
           {
             id: 'wi_init',
@@ -194,6 +195,7 @@
         },
         days: incoming.days || base.days,
         cravings: Array.isArray(incoming.cravings) ? incoming.cravings.slice(-500) : [],
+        waist: Array.isArray(incoming.waist) ? incoming.waist.slice(-200) : [],
         weighIns: Array.isArray(incoming.weighIns) ? incoming.weighIns : base.weighIns,
         chatHistory: Array.isArray(incoming.chatHistory) && incoming.chatHistory.length ? incoming.chatHistory : base.chatHistory
       };
@@ -816,6 +818,7 @@
       const liked = state.aiMemory.likedPatterns.slice(-8).join(', ') || 'טרם נאספו';
       const disliked = state.aiMemory.dislikedPatterns.slice(-8).join(', ') || 'אין';
       const notes = state.aiMemory.customNotes.slice(-8).join(' | ') || 'אין';
+      const habitual = state.aiMemory.customQuickMeals.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0)).slice(0, 8).map(m => `${m.name} (${m.netCarbs}ג׳ פחמימה, ${m.protein}ג׳ חלבון)`).join('; ') || 'טרם נלמדו';
       const waitSt = getKosherWaitStatus();
       const waitNote = waitSt.isWaiting
         ? `המשתמש אכל לאחרונה ארוחה בשרית (${state.kosher.lastMeatMealName}) ונמצא כעת בהמתנה לחלבי (נותרו ${waitSt.formatted}). לכן המלץ כרגע רק על פרווה או בשרי!`
@@ -830,7 +833,8 @@
 זיכרון למידה אישי של המשתמש:
 - העדפות שאהב (👍): ${liked}
 - דברים שפחות מתאימים לו (👎): ${disliked}
-- הערות אישיות: ${notes}`;
+- הערות אישיות: ${notes}
+- ארוחות שהוא אוכל לעיתים קרובות (השתמש בערכים דומים לעקביות): ${habitual}`;
     }
 
     async function callGemini(payload) {
@@ -1537,7 +1541,10 @@ ${memoryPrompt}
       btn.disabled = true;
       btn.innerHTML = `<span class="animate-pulse">✨ מנתח כשרות וערכים עם AI...</span>`;
 
-      const result = await analyzeMealWithGemini(desc, pendingCompressedBase64);
+      const learned = !pendingCompressedBase64 ? findLearnedMeal(desc) : null;
+      const result = learned
+        ? { name: learned.name, netCarbs: learned.netCarbs, protein: learned.protein, calories: learned.calories, kosherType: learned.kosherType, status: learned.status || 'good', wittyTip: '🧠 מהזיכרון שלך: ארוחה שכבר תיעדת. ללא המתנה לניתוח.' }
+        : await analyzeMealWithGemini(desc, pendingCompressedBase64);
       pendingAnalysisResult = result;
 
       renderPreviewAnalysisCard();
@@ -1619,6 +1626,7 @@ ${memoryPrompt}
       if (!pendingAnalysisResult) return;
       const toSave = { ...pendingAnalysisResult };
       const photoToSave = pendingCompressedDataUrl || null;
+      try { learnMeal(toSave, document.getElementById('mealDescInput').value); } catch (e) {}
 
       pendingAnalysisResult = null;
       document.getElementById('mealDescInput').value = '';
@@ -1633,6 +1641,7 @@ ${memoryPrompt}
       const allQuick = [...state.aiMemory.customQuickMeals, ...CURATED_KOSHER_MEALS];
       const meal = allQuick.find(m => m.id === mealId);
       if (!meal) return;
+      if (meal.isCustomAi) { meal.uses = (meal.uses || 1) + 1; meal.lastUsed = Date.now(); }
       closeMealSheet();
       finalizeMealLogging(meal, null);
     }
@@ -2309,7 +2318,8 @@ ${memoryPrompt}
     function renderQuickFavoritesGrid() {
       const container = document.getElementById('quickFavoritesGrid');
       const waitSt = getKosherWaitStatus();
-      const allQuick = [...state.aiMemory.customQuickMeals, ...CURATED_KOSHER_MEALS];
+      const learnedSorted = state.aiMemory.customQuickMeals.slice().sort((a, b) => (b.uses || 0) - (a.uses || 0) || (b.lastUsed || 0) - (a.lastUsed || 0));
+      const allQuick = [...learnedSorted, ...CURATED_KOSHER_MEALS];
 
       container.innerHTML = allQuick.map(meal => {
         const kBadgeClass = getKosherBadgeClasses(meal.kosherType);
@@ -2792,6 +2802,7 @@ ${memoryPrompt}
       document.getElementById('motivationText').textContent = getMotivation();
       document.getElementById('streakBadge').textContent = `🔥 ${computeStreak()}`;
       renderGuardCard();
+      renderWaistCard();
     }
 
     function celebrate(message, big = false) {
@@ -3201,7 +3212,9 @@ ${memoryPrompt}
         </div>
         <p class="text-[11px] text-slate-500 leading-relaxed">${hint}</p>
         <button onclick="openCraving()" class="w-full py-3.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-sm shadow-sm transition active:scale-95">🍫 מתחשק לי משהו מתוק</button>
-        <button onclick="openProductCheck()" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition active:scale-95">🔎 בדוק מוצר לפני שאתה קונה (ברקוד)</button>`;
+        <button onclick="openProductCheck()" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition active:scale-95">🔎 בדוק מוצר לפני שאתה קונה (ברקוד)</button>
+        <button onclick="runCravingInsights()" class="w-full py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs transition active:scale-95">🧠 מה ה-AI למד עליי?</button>
+        <div id="guardInsights" class="space-y-2"></div>`;
     }
 
     // ---------- SOS ----------
@@ -3478,7 +3491,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
-      purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
+      addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
       openShabbatHub,
@@ -3581,6 +3594,147 @@ ${memoryPrompt}
     function offerPurgeDemo() {
       if (!hasDemoData()) return;
       if (confirm('נמצאו נתוני הדגמה (ארוחות ושקילות שלא הוזנו על ידך). למחוק אותם? הנתונים שהזנת בעצמך יישארו.')) purgeDemoData();
+    }
+
+    // =========================================================================
+    // 13d. למידה אישית: זיכרון ארוחות, היקף מותן, ותובנות AI מיומן החשקים
+    // =========================================================================
+    function normFood(s) {
+      return String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function findLearnedMeal(desc) {
+      const n = normFood(desc);
+      if (!n) return null;
+      return (state.aiMemory.customQuickMeals || []).find(m =>
+        normFood(m.name) === n || (Array.isArray(m.aliases) && m.aliases.includes(n))) || null;
+    }
+
+    function learnMeal(meal, desc) {
+      const list = state.aiMemory.customQuickMeals;
+      const n = normFood(desc);
+      let hit = list.find(m => normFood(m.name) === normFood(meal.name) || (n && Array.isArray(m.aliases) && m.aliases.includes(n)));
+      if (hit) {
+        hit.uses = (hit.uses || 1) + 1;
+        hit.lastUsed = Date.now();
+        // ערכים שתוקנו או נבדקו מחדש מחליפים את הישנים
+        Object.assign(hit, { netCarbs: meal.netCarbs, protein: meal.protein, calories: meal.calories, kosherType: meal.kosherType });
+        if (n && !(hit.aliases || []).includes(n)) hit.aliases = (hit.aliases || []).concat(n).slice(-6);
+        return;
+      }
+      list.unshift({
+        id: 'cq_' + Date.now(),
+        name: meal.name,
+        kosherType: meal.kosherType,
+        netCarbs: meal.netCarbs,
+        protein: meal.protein,
+        calories: meal.calories,
+        status: meal.status || 'good',
+        wittyTip: meal.wittyTip || '',
+        isCustomAi: true,
+        aliases: n ? [n] : [],
+        uses: 1,
+        lastUsed: Date.now()
+      });
+      state.aiMemory.customQuickMeals = list.slice(0, 60);
+    }
+
+    // ---------- היקף מותן ----------
+    function renderWaistCard() {
+      const host = document.getElementById('waistCard');
+      if (!host) return;
+      const list = (state.waist || []).slice().sort((a, b) => (a.date + (a.id || '')).localeCompare(b.date + (b.id || '')));
+      let change = '';
+      if (list.length >= 2) {
+        const d = +(list[list.length - 1].cm - list[0].cm).toFixed(1);
+        change = `<span class="text-xs font-extrabold ${d <= 0 ? 'text-emerald-600' : 'text-rose-500'}">${d <= 0 ? '▼' : '▲'} ${Math.abs(d)} ס״מ מההתחלה</span>`;
+      }
+      const rows = list.slice(-5).reverse().map(w => `<div class="flex justify-between text-xs text-slate-600 tabular-nums"><span>${esc(w.date.split('-').reverse().slice(0, 2).join('/'))}</span><span class="font-extrabold text-slate-900">${esc(w.cm)} ס״מ</span></div>`).join('');
+      host.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-extrabold text-slate-900">📏 היקף מותן</h3>
+            <p class="text-[11px] text-slate-500">פעם בשבוע עם סרט מדידה, באותו מקום (בגובה הטבור). עובד גם בלי משקל.</p>
+          </div>
+          ${change}
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="waistInput" type="number" inputmode="decimal" step="0.1" placeholder="ס״מ" dir="ltr" class="w-24 px-3 py-2 rounded-xl border border-slate-200 text-sm font-extrabold text-center" />
+          <button onclick="addWaist()" class="flex-1 py-2.5 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs active:scale-95">שמור מדידה</button>
+        </div>
+        ${rows ? `<div class="space-y-1 pt-1">${rows}</div>` : ''}`;
+    }
+
+    function addWaist() {
+      const v = Number(String(document.getElementById('waistInput').value).replace(',', '.'));
+      if (!v || v < 40 || v > 200) { showToast('הכנס היקף תקין בס״מ'); return; }
+      state.waist = (state.waist || []).concat([{ id: 'wa_' + Date.now(), date: getTodayKey(), cm: +v.toFixed(1) }]).slice(-200);
+      saveState();
+      renderAll();
+      celebrate('📏 נשמר! מדידה קבועה = משמעת', false);
+    }
+
+    // ---------- תובנות AI על החשקים ----------
+    function buildPatternData() {
+      const days = [];
+      for (let i = 0; i < 30; i++) {
+        const k = getOffsetDateKey(i);
+        const d = state.days[k];
+        const cr = cravingList().filter(c => c.dateKey === k);
+        if (!d && !cr.length) continue;
+        const meals = (d && d.meals) || [];
+        days.push({
+          date: k,
+          sleep: d ? d.sleepHours : null,
+          water: d ? d.waterLiters : 0,
+          move: d ? d.movementMinutes : 0,
+          carbs: meals.reduce((s, m) => s + (Number(m.carbs ?? m.netCarbs) || 0), 0),
+          protein: meals.reduce((s, m) => s + (Number(m.protein) || 0), 0),
+          meals: meals.length,
+          cravings: cr.map(c => ({ hour: c.hour, trigger: c.trigger, outcome: c.outcome }))
+        });
+      }
+      return days;
+    }
+
+    function localPatternInsights(days) {
+      const out = [];
+      const all = cravingList();
+      if (all.length < 3) return [{ title: 'עוד מעט יש מה ללמוד', detail: 'צריך לפחות 3 רישומי חשק כדי לזהות דפוס. כל רישום, גם כשעמדת בחשק, מלמד אותי עליך.' }];
+      const st = computeCleanStats();
+      if (st.riskMinutes !== null) out.push({ title: `שעת הסיכון: ${fmtMinutes(st.riskMinutes)}`, detail: 'רוב החשקים שלך מגיעים בשעה הזו. תכין מראש חלופה ותשתה משהו חם כמה דקות לפני.' });
+      if (st.topTrigger) out.push({ title: `הטריגר המוביל: ${st.topTrigger.label}`, detail: 'כשהטריגר הזה מופיע, עצור 10 דקות עם כפתור ה-SOS לפני כל החלטה.' });
+      const short = days.filter(d => d.sleep !== null && d.sleep < 6.5);
+      const rest = days.filter(d => d.sleep !== null && d.sleep >= 6.5);
+      const rate = arr => arr.length ? arr.reduce((s, d) => s + d.cravings.length, 0) / arr.length : null;
+      if (short.length >= 2 && rest.length >= 2 && rate(short) > rate(rest)) {
+        out.push({ title: 'שינה קצרה = יותר חשקים', detail: `בימים עם פחות מ-6.5 שעות שינה: ${rate(short).toFixed(1)} חשקים ליום, לעומת ${rate(rest).toFixed(1)} בימים אחרים.` });
+      }
+      return out;
+    }
+
+    async function runCravingInsights() {
+      const host = document.getElementById('guardInsights');
+      if (!host) return;
+      host.innerHTML = '<p class="text-xs text-slate-500 text-center py-2 animate-pulse">🧠 מנתח את הדפוסים שלך…</p>';
+      const days = buildPatternData();
+      let items = null;
+      const raw = await callGemini({
+        contents: [{ role: 'user', parts: [{ text: `אתה מאמן תזונה ישראלי חם וישיר. המטרה של המשתמש: לא ליפול למתוקים וחטיפים. הנה נתוני 30 הימים האחרונים שלו (JSON): ${JSON.stringify(days)}.
+בכל יום: שעות שינה, מים, תנועה, פחמימות נטו, חלבון, ומערך cravings עם hour (שעה), trigger (טריגר) ו-outcome (resisted=עמד בחשק, gave_in=נכנע).
+מצא 2-3 דפוסים אמיתיים שמופיעים בנתונים בלבד (למשל קשר בין שינה, חלבון או שעה לבין חשקים). אסור להמציא. אם אין מספיק נתונים אמור זאת. לכל דפוס תן title קצר ו-detail עם צעד מעשי אחד. החזר JSON בלבד.` }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: { type: 'OBJECT', properties: { insights: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, detail: { type: 'STRING' } }, required: ['title', 'detail'] } } }, required: ['insights'] }
+        }
+      });
+      if (raw) {
+        try { const p = JSON.parse(raw); if (Array.isArray(p.insights) && p.insights.length) items = p.insights.slice(0, 3); } catch (e) {}
+      }
+      const fromAi = Boolean(items);
+      if (!items) items = localPatternInsights(days);
+      host.innerHTML = items.map(i => `<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-3"><div class="text-xs font-extrabold text-indigo-900">${esc(i.title)}</div><p class="text-[11px] text-slate-700 leading-relaxed mt-1">${esc(i.detail)}</p></div>`).join('')
+        + `<p class="text-[10px] text-slate-400 text-center">${fromAi ? 'נוצר על ידי Gemini מהנתונים שלך' : 'ניתוח מקומי. עם מפתח Gemini התובנות יהיו עמוקות יותר'}</p>`;
     }
 
     async function boot() {
