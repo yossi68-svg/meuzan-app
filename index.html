@@ -288,14 +288,17 @@
 
             <div class="my-1.5">
               <div class="text-[11px] font-bold text-slate-500">תנועה</div>
-              <div id="habitMoveLabel" class="text-[11px] font-extrabold text-slate-900 mt-1 leading-tight">מנוחה</div>
+              <div id="habitMoveLabel" class="text-sm font-extrabold text-slate-900 mt-0.5 leading-tight">עוד לא</div>
+              <div id="habitMoveWeek" class="text-[10px] font-bold text-emerald-700 mt-0.5"></div>
             </div>
 
-            <button onclick="cycleMovementMinutes()" class="w-full py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 text-[10px] font-extrabold transition active:scale-95">
-              +15 דק׳
+            <button onclick="openActivity()" class="w-full py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 text-[10px] font-extrabold transition active:scale-95">
+              + פעילות
             </button>
           </div>
         </div>
+
+        <button onclick="openDaySummary()" class="w-full py-3 rounded-3xl bg-gradient-to-l from-teal-600 to-emerald-600 text-white font-extrabold text-sm shadow-card active:scale-95">📊 סיכום יומי — ציון והמלצה</button>
 
         <!-- Selected Day's Kosher Meals List with AI Feedback Buttons -->
         <div class="space-y-2.5">
@@ -1030,6 +1033,25 @@
 
 
   <!-- SOS: חשק למתוק -->
+
+  <div id="activityModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900 font-display">🏃 פעילות גופנית</h3>
+        <button onclick="closeActivity()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center" aria-label="סגור">✕</button>
+      </div>
+      <div id="activityBody" class="space-y-3.5"></div>
+    </div>
+  </div>
+  <div id="summaryModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-extrabold text-slate-900 font-display">📊 סיכום יומי</h3>
+        <button onclick="closeDaySummary()" class="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center" aria-label="סגור">✕</button>
+      </div>
+      <div id="summaryBody" class="space-y-3.5"></div>
+    </div>
+  </div>
   <div id="cravingModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="w-full max-w-sm bg-white rounded-3xl p-5 border border-slate-200 shadow-2xl space-y-3.5 animate-fade-up max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between">
@@ -1073,7 +1095,7 @@
   <script>
     // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
     (function () {
-      var EXPECT = 'v1.6.0';
+      var EXPECT = 'v1.7.0';
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.__APP_VERSION === EXPECT) return;

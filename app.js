@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.6.0';
+window.__APP_VERSION = 'v1.7.0';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -2286,6 +2286,237 @@ ${memoryPrompt}
       showToast('✅ ההגדרות נשמרו');
     }
 
+
+    // =========================================================================
+    // 13e. פעילות גופנית (סוג + משך + התמדה) וסיכום יומי עם ציון
+    // =========================================================================
+    const ACTIVITY_TYPES = [
+      { id: 'walk', label: 'הליכה', emoji: '🚶' },
+      { id: 'run', label: 'ריצה', emoji: '🏃' },
+      { id: 'strength', label: 'כוח', emoji: '🏋️' },
+      { id: 'bike', label: 'אופניים', emoji: '🚴' },
+      { id: 'swim', label: 'שחייה', emoji: '🏊' },
+      { id: 'stretch', label: 'מתיחות/יוגה', emoji: '🧘' },
+      { id: 'other', label: 'אחר', emoji: '⚡' },
+    ];
+    const ACTIVITY_MINS = [10, 15, 20, 30, 45, 60, 90];
+    let actType = 'walk';
+    let actMins = 30;
+
+    function activityType(id) { return ACTIVITY_TYPES.find(t => t.id === id) || ACTIVITY_TYPES[ACTIVITY_TYPES.length - 1]; }
+    function dayActivities(day) {
+      if (!day) return [];
+      if (Array.isArray(day.activities) && day.activities.length) return day.activities;
+      const m = Number(day.movementMinutes) || 0;
+      return m > 0 ? [{ id: 'legacy', type: 'other', minutes: m, legacy: true }] : [];
+    }
+    function dayActiveMinutes(day) { return dayActivities(day).reduce((a, x) => a + (Number(x.minutes) || 0), 0); }
+    function syncMovement(day) { day.movementMinutes = (day.activities || []).reduce((a, x) => a + (Number(x.minutes) || 0), 0); }
+
+    function computeActivityStats() {
+      const today = new Date();
+      const keys = [];
+      for (let i = 13; i >= 0; i--) { const d = new Date(today); d.setDate(d.getDate() - i); keys.push(getDateKeyOf(d)); }
+      const mins = keys.map(k => dayActiveMinutes(state.days[k]));
+      const last7 = mins.slice(-7);
+      const activeDays7 = last7.filter(m => m >= 10).length;
+      const total7 = last7.reduce((a, b) => a + b, 0);
+      // רצף: ימים רצופים עם פעילות. היום עוד לא נגמר, אז אם היום ריק סופרים מאתמול. שבת לא שוברת רצף.
+      let streak = 0;
+      const d = new Date(today);
+      if (dayActiveMinutes(state.days[getDateKeyOf(d)]) < 10) d.setDate(d.getDate() - 1);
+      for (let i = 0; i < 365; i++) {
+        const m = dayActiveMinutes(state.days[getDateKeyOf(d)]);
+        if (m >= 10) streak++;
+        else if (d.getDay() !== 6) break;
+        d.setDate(d.getDate() - 1);
+      }
+      const byType = {};
+      keys.slice(-7).forEach(k => dayActivities(state.days[k]).forEach(a => { byType[a.type] = (byType[a.type] || 0) + (Number(a.minutes) || 0); }));
+      return { keys, mins, activeDays7, total7, streak, byType };
+    }
+    function getDateKeyOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+    function renderMoveCard() {
+      const day = state.days[state.selectedDateKey];
+      const acts = dayActivities(day);
+      const mins = dayActiveMinutes(day);
+      const st = computeActivityStats();
+      const emoji = acts.length ? activityType(acts[acts.length - 1].type).emoji : '🛋️';
+      const e = document.getElementById('habitMoveEmoji'); if (e) e.textContent = emoji;
+      const l = document.getElementById('habitMoveLabel'); if (l) l.textContent = mins > 0 ? `${mins} דק׳` : 'עוד לא';
+      const w = document.getElementById('habitMoveWeek'); if (w) w.textContent = `${st.activeDays7}/7 ימים${st.streak >= 2 ? ' · 🔥' + st.streak : ''}`;
+      const dot = document.getElementById('habitMoveActiveDot'); if (dot) dot.classList.toggle('hidden', mins <= 0);
+    }
+
+    function openActivity() {
+      document.getElementById('activityModal').classList.remove('hidden');
+      renderActivityBody();
+    }
+    function closeActivity() { document.getElementById('activityModal').classList.add('hidden'); }
+    function setActType(id) { actType = id; renderActivityBody(); }
+    function setActMins(m) { actMins = m; const c = document.getElementById('actCustomMins'); if (c) c.value = ''; renderActivityBody(); }
+
+    function renderActivityBody() {
+      const host = document.getElementById('activityBody');
+      if (!host) return;
+      const day = state.days[state.selectedDateKey];
+      const acts = dayActivities(day);
+      const st = computeActivityStats();
+      const chip = (on) => on ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200';
+      const dots = st.keys.map((k, i) => {
+        const m = st.mins[i];
+        const cls = m >= 30 ? 'bg-emerald-500' : (m >= 10 ? 'bg-emerald-300' : 'bg-slate-200');
+        return `<div class="flex flex-col items-center gap-0.5"><div class="w-4 h-4 rounded-md ${cls}" title="${k}: ${m} דק׳"></div><span class="text-[9px] text-slate-400">${['א','ב','ג','ד','ה','ו','ש'][new Date(k + 'T12:00').getDay()]}</span></div>`;
+      }).join('');
+      const types = Object.keys(st.byType).sort((a, b) => st.byType[b] - st.byType[a])
+        .map(t => `<span class="px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-bold text-slate-600">${activityType(t).emoji} ${activityType(t).label} ${st.byType[t]}׳</span>`).join('');
+      host.innerHTML = `
+        <div>
+          <div class="text-xs font-bold text-slate-600 mb-1.5">סוג פעילות</div>
+          <div class="flex flex-wrap gap-1.5">${ACTIVITY_TYPES.map(t => `<button onclick="setActType('${t.id}')" class="px-3 py-2 rounded-2xl border text-xs font-extrabold ${chip(actType === t.id)}">${t.emoji} ${t.label}</button>`).join('')}</div>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-slate-600 mb-1.5">משך (דקות)</div>
+          <div class="flex flex-wrap gap-1.5">${ACTIVITY_MINS.map(m => `<button onclick="setActMins(${m})" class="min-w-[44px] px-2.5 py-2 rounded-2xl border text-xs font-extrabold ${chip(actMins === m)}">${m}</button>`).join('')}
+            <input id="actCustomMins" type="number" inputmode="numeric" min="1" max="600" placeholder="אחר" class="w-20 px-2.5 py-2 rounded-2xl border border-slate-200 text-xs font-bold text-center" />
+          </div>
+        </div>
+        <button onclick="saveActivity()" class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm active:scale-95">➕ שמור פעילות</button>
+        ${acts.length ? `<div class="space-y-1.5">
+          <div class="text-xs font-bold text-slate-600">${state.selectedDateKey === getTodayKey() ? 'היום' : formatHebrewShortDate(state.selectedDateKey)} · ${dayActiveMinutes(day)} דק׳</div>
+          ${acts.map(a => `<div class="flex items-center justify-between px-3 py-2 rounded-2xl bg-slate-50 border border-slate-100 text-sm">
+            <span class="font-bold text-slate-800">${activityType(a.type).emoji} ${a.legacy ? 'תנועה' : activityType(a.type).label} · ${a.minutes} דק׳${a.time ? ` <span class="text-[11px] text-slate-400">${a.time}</span>` : ''}</span>
+            <button onclick="deleteActivity('${a.id}')" class="w-8 h-8 rounded-full text-slate-400 hover:text-rose-600" aria-label="מחק">✕</button></div>`).join('')}
+        </div>` : ''}
+        <div class="pt-3 border-t border-slate-100 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold text-slate-700">📈 התמדה — 14 ימים</span>
+            <span class="text-[11px] font-bold text-emerald-700">${st.activeDays7}/7 ימים · ${st.total7} דק׳ השבוע${st.streak ? ` · רצף ${st.streak}` : ''}</span>
+          </div>
+          <div class="flex justify-between">${dots}</div>
+          ${types ? `<div class="flex flex-wrap gap-1.5">${types}</div>` : '<p class="text-[11px] text-slate-400">עוד אין פעילויות השבוע. גם 10 דקות נספרות.</p>'}
+        </div>`;
+    }
+
+    function saveActivity() {
+      const c = document.getElementById('actCustomMins');
+      const custom = c && c.value ? parseInt(c.value, 10) : 0;
+      const minutes = custom > 0 && custom <= 600 ? custom : actMins;
+      const day = ensureDayRecord(state.selectedDateKey);
+      if (!Array.isArray(day.activities)) {
+        day.activities = [];
+        const legacy = Number(day.movementMinutes) || 0;
+        if (legacy > 0) day.activities.push({ id: 'act_legacy_' + Date.now(), type: 'other', minutes: legacy });
+      }
+      const now = new Date();
+      day.activities.push({ id: 'act_' + Date.now(), type: actType, minutes, time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`, ts: now.getTime() });
+      syncMovement(day);
+      saveState();
+      renderAll();
+      renderActivityBody();
+      const st = computeActivityStats();
+      showToast(`${activityType(actType).emoji} נרשמו ${minutes} דק׳ ${activityType(actType).label}${st.streak >= 2 ? ` · רצף ${st.streak} ימים 🔥` : ''}`);
+    }
+
+    function deleteActivity(id) {
+      const day = ensureDayRecord(state.selectedDateKey);
+      if (id === 'legacy') { day.movementMinutes = 0; day.activities = []; }
+      else { day.activities = (day.activities || []).filter(a => a.id !== id); syncMovement(day); }
+      saveState();
+      renderAll();
+      renderActivityBody();
+    }
+
+    // ---------- סיכום יומי: ציון 1-10 + המלצה קצרה ----------
+    function computeDayScore(dateKey) {
+      const sum = computeDaySummary(dateKey);
+      const day = state.days[dateKey] || {};
+      const slips = cravingList().filter(c => c.dateKey === dateKey && c.outcome === 'gave_in').length;
+      const wins = cravingList().filter(c => c.dateKey === dateKey && c.outcome !== 'gave_in').length;
+      const mins = dayActiveMinutes(day);
+      const parts = [];
+      // אוכל: פחמימות מול יעד (4 נק׳)
+      let food = 0;
+      if (sum.meals.length) {
+        food = sum.netCarbs <= sum.carbTarget ? 4 : Math.max(0, 4 - ((sum.netCarbs - sum.carbTarget) / sum.carbTarget) * 8);
+      }
+      parts.push({ id: 'food', label: '🥗 פחמימות', got: food, max: 4, note: sum.meals.length ? `${Math.round(sum.netCarbs)}/${sum.carbTarget}ג׳` : 'לא תועדו ארוחות' });
+      const prot = sum.meals.length ? Math.min(1, sum.protein / sum.proteinTarget) * 1.5 : 0;
+      parts.push({ id: 'protein', label: '🍗 חלבון', got: prot, max: 1.5, note: `${Math.round(sum.protein)}/${sum.proteinTarget}ג׳` });
+      const sweets = Math.max(0, 2 - slips);
+      parts.push({ id: 'sweets', label: '🛡️ מתוקים', got: sweets, max: 2, note: slips ? `${slips} נפילות${wins ? `, ${wins} ניצחונות` : ''}` : (wins ? `${wins} ניצחונות 💪` : 'נקי') });
+      const act = Math.min(1, mins / 30) * 1.5;
+      parts.push({ id: 'activity', label: '🏃 פעילות', got: act, max: 1.5, note: mins ? `${mins} דק׳` : 'לא נרשמה' });
+      let sleep = 0.5;
+      if (day.sleepHours !== null && day.sleepHours !== undefined) sleep = day.sleepHours >= 7 ? 1 : (day.sleepHours >= 6.5 ? 0.7 : 0.3);
+      parts.push({ id: 'sleep', label: '😴 שינה', got: sleep, max: 1, note: day.sleepHours != null ? `${day.sleepHours} ש׳` : 'לא דווחה' });
+      const total = parts.reduce((a, p) => a + p.got, 0);
+      const score = Math.max(1, Math.min(10, Math.round(total)));
+      const weakest = parts.slice().sort((a, b) => (a.got / a.max) - (b.got / b.max))[0];
+      const TIPS = {
+        food: sum.meals.length ? 'מחר: ירק + חלבון בכל ארוחה, ופחמימה רק בחצי צלחת אחת.' : 'מחר: לתעד כל ארוחה ברגע שאוכלים. 10 שניות.',
+        protein: 'מחר: להוסיף מנת חלבון (ביצים, עוף, יוגורט) לארוחת הבוקר.',
+        sweets: 'מחר: להכין חלופה מוכנה לשעת הסיכון, ולהשתמש ב-SOS לפני שפותחים את המזווה.',
+        activity: 'מחר: 15 דקות הליכה אחרי ארוחה. זה כל מה שצריך לרצף.',
+        sleep: 'הלילה: מסך כבוי חצי שעה לפני השינה. שינה טובה מורידה חשק למתוק.',
+      };
+      const tip = score >= 9 ? 'יום מצוין! לחזור על אותו דבר מחר.' : TIPS[weakest.id];
+      return { score, parts, tip, slips, wins, mins, sum };
+    }
+
+    async function openDaySummary() {
+      const key = state.selectedDateKey;
+      const r = computeDayScore(key);
+      const m = document.getElementById('summaryModal');
+      m.classList.remove('hidden');
+      const color = r.score >= 8 ? 'text-emerald-600' : (r.score >= 5 ? 'text-amber-600' : 'text-rose-600');
+      const bar = (p) => {
+        const pct = Math.round((p.got / p.max) * 100);
+        const c = pct >= 80 ? 'bg-emerald-500' : (pct >= 50 ? 'bg-amber-400' : 'bg-rose-400');
+        return `<div class="space-y-0.5"><div class="flex justify-between text-[12px]"><span class="font-bold text-slate-700">${p.label}</span><span class="text-slate-500">${p.note}</span></div>
+          <div class="h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full ${c}" style="width:${pct}%"></div></div></div>`;
+      };
+      document.getElementById('summaryBody').innerHTML = `
+        <div class="text-center">
+          <div class="text-5xl font-extrabold ${color} tabular-nums">${r.score}<span class="text-xl text-slate-300">/10</span></div>
+          <div class="text-xs text-slate-500 mt-1">${key === getTodayKey() ? 'היום עד עכשיו' : formatHebrewShortDate(key)}</div>
+        </div>
+        <div class="space-y-2">${r.parts.map(bar).join('')}</div>
+        <div class="p-3 rounded-2xl bg-teal-50 border border-teal-100">
+          <div class="text-[11px] font-extrabold text-teal-700 mb-0.5">💡 ההמלצה שלי</div>
+          <p id="summaryTip" class="text-sm font-bold text-slate-800 leading-snug">${r.tip}</p>
+        </div>`;
+      const day = ensureDayRecord(key);
+      day.summary = { score: r.score, tip: r.tip, at: Date.now() };
+      saveLocalOnly();
+      if (!getGeminiKey() || !navigator.onLine) return;
+      const tipEl = document.getElementById('summaryTip');
+      tipEl.insertAdjacentHTML('beforeend', ' <span id="summaryAiDots" class="text-teal-500">· AI חושב…</span>');
+      const data = {
+        score: r.score,
+        meals: r.sum.meals.map(x => ({ time: x.time, name: x.name, carbs: x.carbs ?? x.netCarbs, protein: x.protein })),
+        carbs: Math.round(r.sum.netCarbs), carbTarget: r.sum.carbTarget, protein: Math.round(r.sum.protein), proteinTarget: r.sum.proteinTarget,
+        activities: dayActivities(state.days[key]).map(a => ({ type: activityType(a.type).label, minutes: a.minutes })),
+        activeDaysThisWeek: computeActivityStats().activeDays7,
+        sleepHours: state.days[key].sleepHours, sweetSlips: r.slips, cravingsResisted: r.wins,
+      };
+      const raw = await callGemini({
+        contents: [{ role: 'user', parts: [{ text: `סיכום יום. הנתונים: ${JSON.stringify(data)}\nכתוב המלצה אחת קצרצרה להמשך (עד 14 מילים), מעשית וספציפית לנתונים. החזר JSON: {"tip":"..."}` }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
+      });
+      const dots = document.getElementById('summaryAiDots'); if (dots) dots.remove();
+      try {
+        const tip = raw && JSON.parse(raw).tip;
+        if (tip && document.getElementById('summaryTip')) {
+          document.getElementById('summaryTip').textContent = String(tip).slice(0, 160);
+          day.summary.tip = String(tip).slice(0, 160);
+          saveLocalOnly();
+        }
+      } catch (e) {}
+    }
+    function closeDaySummary() { document.getElementById('summaryModal').classList.add('hidden'); }
+
     // =========================================================================
     // 13. RENDERING FUNCTIONS
     // =========================================================================
@@ -2463,12 +2694,7 @@ ${memoryPrompt}
         else sleepTagEl.classList.add('hidden');
       }
 
-      const moveMins = sum.movementMinutes;
-      document.getElementById('habitMoveEmoji').textContent = moveMins >= 30 ? '🏃' : (moveMins > 0 ? '🚶' : '🛋️');
-      document.getElementById('habitMoveLabel').textContent = moveMins > 0 ? `${moveMins} דק׳` : 'מנוחה';
-      const moveDot = document.getElementById('habitMoveActiveDot');
-      if (moveMins > 0) moveDot.classList.remove('hidden');
-      else moveDot.classList.add('hidden');
+      renderMoveCard();
 
       const titleLabel = state.selectedDateKey === getTodayKey()
         ? 'הארוחות הכשרות שלי היום'
@@ -3720,6 +3946,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
+      openActivity, closeActivity, setActType, setActMins, saveActivity, deleteActivity, openDaySummary, closeDaySummary,
       backupToDrive, openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
       switchCoachSubTab,
@@ -3797,7 +4024,7 @@ ${memoryPrompt}
         const d = state.days[k];
         d.meals = (d.meals || []).filter(m => !String(m.id).startsWith('dm_'));
         if (d.meals.length === 0 && !state.cravings.some(c => c.dateKey === k)) {
-          d.waterLiters = 0; d.sleepHours = null; d.movementMinutes = 0;
+          d.waterLiters = 0; d.sleepHours = null; d.movementMinutes = 0; d.activities = [];
         }
       });
       state.weighIns = (state.weighIns || []).filter(w => !/^wi_[1-5]$/.test(String(w.id)));
