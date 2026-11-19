@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.7.1';
+window.__APP_VERSION = 'v1.8.0';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -2507,6 +2507,207 @@ ${memoryPrompt}
     }
     function closeDaySummary() { document.getElementById('summaryModal').classList.add('hidden'); }
 
+
+    // =========================================================================
+    // 13f. סיכום שבועי חכם — מוצ״ש בלבד (שבת מ-19:30 ועד סוף יום ראשון)
+    // =========================================================================
+    function isMotzeiWindow(now) {
+      now = now || new Date();
+      const dow = now.getDay(), mins = now.getHours() * 60 + now.getMinutes();
+      return (dow === 6 && mins >= 19 * 60 + 30) || dow === 0;
+    }
+    // השבוע שהסתיים: ראשון עד שבת שלפני (או של) מוצ״ש הנוכחי
+    function lastWeekKeys(now) {
+      now = now || new Date();
+      const sat = new Date(now);
+      sat.setDate(sat.getDate() - ((sat.getDay() + 1) % 7)); // שבת האחרונה (היום אם שבת)
+      const keys = [];
+      for (let i = 6; i >= 0; i--) { const d = new Date(sat); d.setDate(d.getDate() - i); keys.push(getDateKeyOf(d)); }
+      return keys;
+    }
+    function weeklyList() { return state.weekly && typeof state.weekly === 'object' ? state.weekly : (state.weekly = {}); }
+
+    function buildWeekData(keys) {
+      const toMin = t => { const p = String(t || '').split(':').map(Number); return p.length === 2 && !isNaN(p[0]) ? p[0] * 60 + (p[1] || 0) : null; };
+      const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+      const days = [];
+      let allMeals = [], firsts = [], lasts = [], late = 0, longGaps = 0;
+      keys.forEach(k => {
+        const d = state.days[k];
+        const meals = ((d && d.meals) || []).filter(m => !m.pending || m.name);
+        const acts = dayActivities(d);
+        const cr = cravingList().filter(c => c.dateKey === k);
+        const logged = meals.length > 0 || acts.length > 0;
+        const times = meals.map(m => toMin(m.time)).filter(x => x !== null).sort((a, b) => a - b);
+        if (times.length) { firsts.push(times[0]); lasts.push(times[times.length - 1]); }
+        late += times.filter(t => t >= 21 * 60).length;
+        for (let i = 1; i < times.length; i++) if (times[i] - times[i - 1] >= 6 * 60) longGaps++;
+        allMeals = allMeals.concat(meals);
+        days.push({
+          date: k, dow: ['א','ב','ג','ד','ה','ו','ש'][new Date(k + 'T12:00').getDay()],
+          score: logged ? computeDayScore(k).score : null,
+          carbs: Math.round(meals.reduce((a, m) => a + (Number(m.carbs ?? m.netCarbs) || 0), 0)),
+          protein: Math.round(meals.reduce((a, m) => a + (Number(m.protein) || 0), 0)),
+          meals: meals.map(m => ({ t: m.time, n: m.name, c: Math.round(Number(m.carbs ?? m.netCarbs) || 0), p: Math.round(Number(m.protein) || 0) })),
+          activity: acts.map(a => ({ type: activityType(a.type).label, min: a.minutes })),
+          slips: cr.filter(c => c.outcome === 'gave_in').length,
+          resisted: cr.filter(c => c.outcome !== 'gave_in').length,
+        });
+      });
+      const loggedDays = days.filter(d => d.score !== null);
+      const names = allMeals.map(m => normFood(m.name)).filter(Boolean);
+      const unique = new Set(names).size;
+      const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const totalMin = days.reduce((a, d) => a + d.activity.reduce((x, y) => x + (Number(y.min) || 0), 0), 0);
+      const activeDays = days.filter(d => d.activity.reduce((x, y) => x + (Number(y.min) || 0), 0) >= 10).length;
+      const inWeek = x => x.date >= keys[0] && x.date <= keys[6];
+      const weights = (state.weighIns || []).filter(w => w.id !== 'wi_init' && inWeek(w)).map(w => ({ date: w.date, kg: w.weight }));
+      const waist = (state.waist || []).filter(inWeek).map(w => ({ date: w.date, cm: w.cm }));
+      const metrics = {
+        loggedDays: loggedDays.length,
+        avgDayScore: loggedDays.length ? +avg(loggedDays.map(d => d.score)).toFixed(1) : null,
+        meals: allMeals.length,
+        varietyPct: names.length ? Math.round((unique / names.length) * 100) : null,
+        uniqueMeals: unique,
+        avgFirstMeal: firsts.length ? fmt(avg(firsts)) : null,
+        avgLastMeal: lasts.length ? fmt(avg(lasts)) : null,
+        lateMeals: late,
+        longGaps,
+        activeDays, totalActivityMin: totalMin,
+        slips: days.reduce((a, d) => a + d.slips, 0),
+        resisted: days.reduce((a, d) => a + d.resisted, 0),
+        avgCarbs: loggedDays.length ? Math.round(avg(loggedDays.map(d => d.carbs))) : null,
+        carbTarget: state.targets.dailyCarbLimit || 75,
+        avgProtein: loggedDays.length ? Math.round(avg(loggedDays.map(d => d.protein))) : null,
+        proteinTarget: state.targets.dailyProteinTarget || 130,
+      };
+      // ציון מקומי: ממוצע ימי (ימים לא מתועדים בחול מורידים), + התמדה בפעילות וגיוון
+      let local = null;
+      if (loggedDays.length) {
+        const weekdayMissing = days.filter(d => d.dow !== 'ש' && d.score === null).length;
+        local = metrics.avgDayScore - weekdayMissing * 0.5 + (activeDays >= 4 ? 0.5 : 0) + (metrics.varietyPct !== null && metrics.varietyPct >= 50 ? 0.3 : 0);
+        local = Math.max(1, Math.min(10, Math.round(local)));
+      }
+      return { keys, days, metrics, weights, waist, localScore: local };
+    }
+
+    function localWeeklyText(w) {
+      const m = w.metrics, out = [];
+      if (m.loggedDays < 6) out.push(`תיעדת ${m.loggedDays} ימים. ככל שהתיעוד מלא יותר, הניתוח מדויק יותר.`);
+      if (m.slips) out.push(`${m.slips === 1 ? 'נפילה אחת' : m.slips + ' נפילות'} למתוק${m.resisted ? ` מול ${m.resisted === 1 ? 'ניצחון אחד' : m.resisted + ' ניצחונות'}` : ''}. הכינו חלופה לשעת הסיכון.`);
+      else if (m.resisted) out.push(`${m.resisted} פעמים עמדת בחשק בלי נפילה. כל הכבוד!`);
+      if (m.activeDays < 4) out.push(`פעילות ב-${m.activeDays} ימים. היעד: 4 ימים, גם 15 דקות נספרות.`);
+      else out.push(`פעילות ב-${m.activeDays} ימים (${m.totalActivityMin} דק׳). התמדה יפה.`);
+      if (m.lateMeals >= 2) out.push(`${m.lateMeals} ארוחות אחרי 21:00. לנסות לסגור מטבח מוקדם יותר.`);
+      if (m.varietyPct !== null && m.varietyPct < 40) out.push('תפריט די חוזר על עצמו. לנסות 2 מנות חדשות השבוע.');
+      return { summary: m.loggedDays ? `ממוצע יומי ${m.avgDayScore}/10, פחמימות ממוצעות ${m.avgCarbs}/${m.carbTarget}ג׳.` : 'לא נאספו נתונים השבוע.', lessons: out.slice(0, 3) };
+    }
+
+    function renderWeeklyCard() {
+      const host = document.getElementById('weeklyCard');
+      if (!host) return;
+      const show = isMotzeiWindow();
+      host.classList.toggle('hidden', !show);
+      if (!show) { host.innerHTML = ''; return; }
+      const wk = lastWeekKeys()[0];
+      const done = weeklyList()[wk];
+      host.innerHTML = `
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-sm font-extrabold text-indigo-900">🕯️ שבוע טוב! ${done ? `הציון השבועי: ${done.score}/10` : 'הסיכום השבועי מוכן לניתוח'}</div>
+            <p class="text-[11px] text-indigo-800 mt-0.5 truncate">${done ? done.summary : 'ארוחות, פעילות, שעות אכילה וגיוון — וציון'}</p>
+          </div>
+          <button onclick="openWeeklySummary()" class="shrink-0 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs active:scale-95">${done ? 'פתח' : '📊 נתח'}</button>
+        </div>`;
+    }
+
+    let weeklyRunning = false;
+    async function runWeeklyAnalysis(force) {
+      const keys = lastWeekKeys();
+      const wk = keys[0];
+      if (!force && weeklyList()[wk]) return weeklyList()[wk];
+      if (weeklyRunning) return null;
+      weeklyRunning = true;
+      try {
+        const w = buildWeekData(keys);
+        if (!w.metrics.loggedDays) return null;
+        const local = localWeeklyText(w);
+        let res = { score: w.localScore, summary: local.summary, lessons: local.lessons, ai: false };
+        if (getGeminiKey() && navigator.onLine) {
+          const prev = Object.keys(weeklyList()).sort().slice(-4).map(k => ({ week: k, score: weeklyList()[k].score }));
+          const raw = await callGemini({
+            contents: [{ role: 'user', parts: [{ text: `סיכום שבועי (ראשון עד שבת; בשבת לא מתעדים, אל תחשיב את זה כחוסר).
+נתוני השבוע (JSON): ${JSON.stringify({ days: w.days, metrics: w.metrics, weighIns: w.weights, waist: w.waist, previousWeeks: prev })}
+ציון בסיס מחושב: ${w.localScore}/10.
+נתח את כל השבוע: פחמימות וחלבון מול היעד, נפילות למתוק וטריגרים, שעות ארוחות (ארוחה ראשונה/אחרונה, אכילה מאוחרת, מרווחים ארוכים), גיוון בתפריט, התמדה בפעילות, ומגמה מול שבועות קודמים.
+החזר JSON: score (מספר שלם 1-10, קרוב לציון הבסיס אלא אם יש סיבה ברורה), summary (משפט אחד, עד 18 מילים), lessons (2-3 תובנות ללמידה, כל אחת עד 14 מילים, ספציפיות לנתונים ועם צעד מעשי לשבוע הבא).` }] }],
+            generationConfig: {
+              responseMimeType: 'application/json', temperature: 0.5,
+              responseSchema: { type: 'OBJECT', properties: { score: { type: 'INTEGER' }, summary: { type: 'STRING' }, lessons: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['score', 'summary', 'lessons'] }
+            },
+          });
+          try {
+            const j = raw && JSON.parse(raw);
+            if (j && j.summary) {
+              let sc = Math.round(Number(j.score));
+              if (!(sc >= 1 && sc <= 10)) sc = w.localScore;
+              sc = Math.max(w.localScore - 2, Math.min(w.localScore + 2, sc)); // לא מתרחק מהנתונים
+              res = { score: Math.max(1, Math.min(10, sc)), summary: String(j.summary).slice(0, 200), lessons: (j.lessons || []).slice(0, 3).map(x => String(x).slice(0, 160)), ai: true };
+            }
+          } catch (e) {}
+        }
+        res.at = Date.now();
+        res.metrics = w.metrics;
+        res.days = w.days.map(d => ({ dow: d.dow, score: d.score }));
+        weeklyList()[wk] = res;
+        saveState();
+        renderWeeklyCard();
+        return res;
+      } finally { weeklyRunning = false; }
+    }
+
+    async function openWeeklySummary(force) {
+      const m = document.getElementById('weeklyModal');
+      const body = document.getElementById('weeklyBody');
+      m.classList.remove('hidden');
+      const wk = lastWeekKeys()[0];
+      if (force || !weeklyList()[wk]) body.innerHTML = `<p class="text-sm text-slate-500 text-center py-8 animate-pulse">🧠 ${getGeminiKey() ? 'ה-AI לומד את השבוע שלך…' : 'מחשב את השבוע…'}</p>`;
+      const r = await runWeeklyAnalysis(force);
+      if (!r) { body.innerHTML = '<p class="text-sm text-slate-500 text-center py-8">אין מספיק נתונים מהשבוע הזה. תעד ארוחות ופעילות, ובמוצ״ש הבא יחכה לך סיכום.</p>'; return; }
+      const color = r.score >= 8 ? 'text-emerald-600' : (r.score >= 5 ? 'text-amber-600' : 'text-rose-600');
+      const mt = r.metrics || {};
+      const stat = (label, val) => `<div class="rounded-2xl bg-slate-50 border border-slate-100 py-2"><div class="text-sm font-extrabold text-slate-800">${val}</div><div class="text-[10px] font-bold text-slate-500">${label}</div></div>`;
+      const bars = (r.days || []).map(d => {
+        const h = d.score ? Math.max(8, d.score * 10) : 4;
+        const c = d.score === null ? 'bg-slate-200' : (d.score >= 8 ? 'bg-emerald-500' : (d.score >= 5 ? 'bg-amber-400' : 'bg-rose-400'));
+        return `<div class="flex flex-col items-center gap-1 flex-1"><span class="text-[10px] font-bold text-slate-500">${d.score ?? '—'}</span><div class="w-5 rounded-md ${c}" style="height:${h * 0.5}px"></div><span class="text-[10px] text-slate-400">${d.dow}</span></div>`;
+      }).join('');
+      const hist = Object.keys(weeklyList()).sort().slice(-6);
+      const trend = hist.length > 1 ? `<div class="text-[11px] text-slate-500 text-center">שבועות אחרונים: ${hist.map(k => weeklyList()[k].score).join(' ← ')}</div>` : '';
+      body.innerHTML = `
+        <div class="text-center">
+          <div class="text-5xl font-extrabold ${color} tabular-nums">${r.score}<span class="text-xl text-slate-300">/10</span></div>
+          <div class="text-xs text-slate-500 mt-1">מ-${formatHebrewShortDate(wk)} עד ${formatHebrewShortDate(lastWeekKeys()[6])}${r.ai ? ' · ניתוח AI' : ''}</div>
+        </div>
+        <p class="text-sm font-bold text-slate-800 text-center leading-snug">${r.summary}</p>
+        <div class="flex items-end justify-between h-20 px-1">${bars}</div>
+        <div class="grid grid-cols-3 gap-1.5 text-center">
+          ${stat('ימים מתועדים', `${mt.loggedDays ?? 0}/7`)}
+          ${stat('ימי פעילות', `${mt.activeDays ?? 0} · ${mt.totalActivityMin ?? 0}׳`)}
+          ${stat('נפילות / ניצחונות', `${mt.slips ?? 0} / ${mt.resisted ?? 0}`)}
+          ${stat('פחמימות ממוצע', mt.avgCarbs != null ? `${mt.avgCarbs}ג׳` : '—')}
+          ${stat('שעות אכילה', mt.avgFirstMeal ? `${mt.avgFirstMeal}–${mt.avgLastMeal}` : '—')}
+          ${stat('גיוון', mt.varietyPct != null ? `${mt.uniqueMeals} מנות` : '—')}
+        </div>
+        ${(r.lessons || []).length ? `<div class="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 space-y-1.5">
+          <div class="text-[11px] font-extrabold text-indigo-700">📚 ללמידה לשבוע הבא</div>
+          ${r.lessons.map(l => `<p class="text-sm font-bold text-slate-800 leading-snug">• ${l}</p>`).join('')}
+        </div>` : ''}
+        ${trend}
+        <button onclick="openWeeklySummary(true)" class="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs">🔄 נתח מחדש</button>`;
+    }
+    function closeWeeklySummary() { document.getElementById('weeklyModal').classList.add('hidden'); }
+
     // =========================================================================
     // 13. RENDERING FUNCTIONS
     // =========================================================================
@@ -3220,6 +3421,7 @@ ${memoryPrompt}
       renderGuardCard();
       renderWaistCard();
       renderBackupCard();
+      renderWeeklyCard();
     }
 
     function celebrate(message, big = false) {
@@ -3908,6 +4110,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
+      openWeeklySummary, closeWeeklySummary,
       openActivity, closeActivity, setActType, setActMins, saveActivity, deleteActivity, openDaySummary, closeDaySummary,
       backupToDrive, openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
       switchTab,
@@ -4158,6 +4361,8 @@ ${memoryPrompt}
       setTimeout(maybeShowOnboarding, 500);
       setTimeout(offerPurgeDemo, 1500);
       setTimeout(resumePendingMeals, 2500);
+      setTimeout(() => { if (isMotzeiWindow() && !weeklyList()[lastWeekKeys()[0]]) runWeeklyAnalysis(false).then(r => { if (r) showToast(`🕯️ הסיכום השבועי מוכן: ${r.score}/10`); }); }, 4000);
+      setInterval(renderWeeklyCard, 60000);
       setTimeout(() => { if (getDriveClient() && window.MeuzanNotify && MeuzanNotify.backupDue(state, new Date())) autoDriveBackup(false); }, 5000);
       window.addEventListener('online', resumePendingMeals);
       initFirebaseCloud();

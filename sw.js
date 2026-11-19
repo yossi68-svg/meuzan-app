@@ -2,7 +2,7 @@
 // כדי לפרסם עדכון: שנה את VERSION, העלה — בטלפון תופיע הודעה "גרסה חדשה זמינה".
 importScripts('./notify-core.js');
 
-const VERSION = 'v1.7.1';
+const VERSION = 'v1.8.0';
 const CACHE = `meuzan-${VERSION}`;
 const RUNTIME = 'meuzan-runtime';
 const SHELL = [
