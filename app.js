@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.8.0';
+window.__APP_VERSION = 'v1.8.1';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -2514,7 +2514,7 @@ ${memoryPrompt}
     function isMotzeiWindow(now) {
       now = now || new Date();
       const dow = now.getDay(), mins = now.getHours() * 60 + now.getMinutes();
-      return (dow === 6 && mins >= 19 * 60 + 30) || dow === 0;
+      return (dow === 6 && mins >= 22 * 60) || dow === 0;
     }
     // השבוע שהסתיים: ראשון עד שבת שלפני (או של) מוצ״ש הנוכחי
     function lastWeekKeys(now) {
@@ -3542,6 +3542,8 @@ ${memoryPrompt}
       try {
         const saved = await idbGet(NOTIFY_KEY);
         notifyCfg = saved ? { ...base, ...saved, slots: { ...base.slots, ...(saved.slots || {}) }, lastFired: saved.lastFired || {} } : base;
+        // מעבר חד-פעמי: סיכום מוצ״ש זז ל-22:00 כדי שיהיה זמן לתעד את השבת
+        if (notifyCfg.slots.motzei && notifyCfg.slots.motzei.time === '20:30' && !notifyCfg.motzei22) { notifyCfg.slots.motzei.time = '22:00'; notifyCfg.motzei22 = true; saveNotifyCfg(); }
       } catch (e) {
         notifyCfg = base;
       }
