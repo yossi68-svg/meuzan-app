@@ -236,66 +236,14 @@
           </div>
         </div>
 
-        <!-- 3-Column Interactive Vitality Habit Cards -->
-        <div class="grid grid-cols-3 gap-2">
-          <!-- 1. Water Habit Card (+250ml / +500ml) -->
-          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between relative overflow-hidden">
-            <div id="waterCardFill" class="absolute bottom-0 left-0 right-0 bg-sky-500/10 transition-all duration-500 pointer-events-none" style="height: 0%;"></div>
-
-            <div class="relative z-10 flex items-center justify-between">
-              <span class="text-base">💧</span>
-              <button onclick="adjustWater(-0.25)" aria-label="הפחת מים" class="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 text-xs font-bold flex items-center justify-center">−</button>
-            </div>
-
-            <div class="relative z-10 my-1.5 tabular-nums">
-              <div class="text-[11px] font-bold text-slate-500">מים</div>
-              <div class="text-sm font-extrabold text-slate-900 mt-0.5"><span id="habitWaterVal">0.0</span><span class="text-[10px] font-semibold text-slate-400"> / <span id="habitWaterTarget">2.0</span>ל׳</span></div>
-            </div>
-
-            <div class="relative z-10 grid grid-cols-2 gap-1">
-              <button onclick="adjustWater(0.25)" class="py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-extrabold transition active:scale-95">
-                +250
-              </button>
-              <button onclick="adjustWater(0.5)" class="py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-extrabold transition active:scale-95">
-                +500
-              </button>
-            </div>
+        <!-- Activity Card -->
+        <div class="bg-white rounded-3xl p-3.5 border border-slate-200 shadow-card flex items-center gap-3">
+          <span id="habitMoveEmoji" class="text-2xl">🛋️</span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5"><span class="text-xs font-bold text-slate-500">פעילות גופנית</span><span id="habitMoveActiveDot" class="hidden w-2 h-2 rounded-full bg-emerald-500"></span></div>
+            <div class="flex items-baseline gap-2"><span id="habitMoveLabel" class="text-base font-extrabold text-slate-900">עוד לא</span><span id="habitMoveWeek" class="text-[11px] font-bold text-emerald-700"></span></div>
           </div>
-
-          <!-- 2. Sleep Habit Card -->
-          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between">
-            <div class="flex items-center justify-between">
-              <span class="text-base">😴</span>
-              <span id="sleepShortTag" class="hidden px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[9px] font-extrabold">קצר</span>
-            </div>
-
-            <div class="my-1.5 tabular-nums">
-              <div class="text-[11px] font-bold text-slate-500">שינה</div>
-              <div class="text-sm font-extrabold text-slate-900 mt-0.5"><span id="habitSleepVal">—</span></div>
-            </div>
-
-            <button onclick="cycleSleepHours()" class="w-full py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-[10px] font-extrabold transition active:scale-95">
-              עדכן שעות
-            </button>
-          </div>
-
-          <!-- 3. Movement Habit Card -->
-          <div class="bg-white rounded-3xl p-3 border border-slate-200 shadow-card flex flex-col justify-between">
-            <div class="flex items-center justify-between">
-              <span id="habitMoveEmoji" class="text-base">🛋️</span>
-              <span id="habitMoveActiveDot" class="hidden w-2 h-2 rounded-full bg-emerald-500"></span>
-            </div>
-
-            <div class="my-1.5">
-              <div class="text-[11px] font-bold text-slate-500">תנועה</div>
-              <div id="habitMoveLabel" class="text-sm font-extrabold text-slate-900 mt-0.5 leading-tight">עוד לא</div>
-              <div id="habitMoveWeek" class="text-[10px] font-bold text-emerald-700 mt-0.5"></div>
-            </div>
-
-            <button onclick="openActivity()" class="w-full py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 text-[10px] font-extrabold transition active:scale-95">
-              + פעילות
-            </button>
-          </div>
+          <button onclick="openActivity()" class="shrink-0 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs active:scale-95">+ פעילות</button>
         </div>
 
         <button onclick="openDaySummary()" class="w-full py-3 rounded-3xl bg-gradient-to-l from-teal-600 to-emerald-600 text-white font-extrabold text-sm shadow-card active:scale-95">📊 סיכום יומי — ציון והמלצה</button>
@@ -584,7 +532,7 @@
               </span>
               <h2 class="text-base font-extrabold mt-1.5 font-display">המוח של מאוזן AI</h2>
               <p class="text-xs text-indigo-100 leading-relaxed mt-0.5">
-                לומד מהארוחות הכשרות, השינה, השקילות והמשוב שלך (👍/👎) ומשדרג את האפליקציה עבורך.
+                לומד מהארוחות הכשרות, הפעילות, השקילות והמשוב שלך (👍/👎) ומשדרג את האפליקציה עבורך.
               </p>
             </div>
             <div class="text-center bg-white/15 backdrop-blur-xs rounded-2xl px-3 py-2 shrink-0 tabular-nums">
@@ -1095,7 +1043,7 @@
   <script>
     // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
     (function () {
-      var EXPECT = 'v1.7.0';
+      var EXPECT = 'v1.7.1';
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.__APP_VERSION === EXPECT) return;

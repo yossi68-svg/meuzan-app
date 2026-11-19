@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.7.0';
+window.__APP_VERSION = 'v1.7.1';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -896,17 +896,11 @@ window.__APP_VERSION = 'v1.7.0';
       const waterTarget = state.targets.water || 2.0;
       const moveMins = Number(day.movementMinutes) || 0;
 
-      let vitality = 40;
-      vitality += Math.min(22, Math.round((day.waterLiters / waterTarget) * 22));
-      if (day.sleepHours !== null) {
-        if (day.sleepHours >= 7.0) vitality += 18;
-        else if (day.sleepHours >= 6.5) vitality += 15;
-        else vitality += 9;
-      }
-      if (moveMins > 0) vitality += Math.min(10, Math.round((moveMins / 30) * 10));
+      let vitality = 30;
+      if (moveMins > 0) vitality += Math.min(30, Math.round((moveMins / 30) * 30));
       if (day.meals.length > 0) {
-        if (netCarbs <= carbTarget) vitality += 10;
-        else vitality += Math.max(2, 10 - Math.floor((netCarbs - carbTarget) / 8));
+        if (netCarbs <= carbTarget) vitality += 40;
+        else vitality += Math.max(5, 40 - Math.floor((netCarbs - carbTarget) / 3));
       }
 
       return {
@@ -1290,7 +1284,7 @@ ${memoryPrompt}
       const dayKeys = Object.keys(state.days).sort().slice(-7);
       const daysSummary = dayKeys.map(dk => {
         const s = computeDaySummary(dk);
-        return `${dk}: פחמימות=${s.netCarbs}ג׳, חלבון=${s.protein}ג׳, מים=${s.waterLiters}ל׳, שינה=${s.sleepHours ?? 'לא דווח'}, ארוחות=[${s.meals.map(m => `${m.time || ''} ${m.name}(${m.kosherType})`).join(', ')}]`;
+        return `${dk}: פחמימות=${s.netCarbs}ג׳, חלבון=${s.protein}ג׳, תנועה=${s.movementMinutes}דק׳, ארוחות=[${s.meals.map(m => `${m.time || ''} ${m.name}(${m.kosherType})`).join(', ')}]`;
       }).join('\n');
 
       const bmi = calculateBmi(state.profile.currentWeight, state.profile.heightCm);
@@ -2162,7 +2156,7 @@ ${memoryPrompt}
 נתוני המשתמש החיים כרגע:
 - משקל נוכחי: ${state.profile.currentWeight} ק״ג | משקל יעד: ${state.profile.targetWeight} ק״ג (נותרו ${remainingKg} ק״ג ליעד) | BMI: ${bmi}
 - היום צרך: ${todaySum.netCarbs}ג׳ פחמימות מתוך ${todaySum.carbTarget}ג׳, ו-${todaySum.protein}ג׳ חלבון מתוך ${todaySum.proteinTarget}ג׳
-- מים: ${todaySum.waterLiters} ל׳ | שינה: ${todaySum.sleepHours !== null ? todaySum.sleepHours + ' שעות' : 'לא דווח'}
+- פעילות היום: ${dayActiveMinutes(state.days[getTodayKey()])} דק׳ | ימים פעילים השבוע: ${computeActivityStats().activeDays7}/7
 
 הנחיות: ענה בעברית טבעית ותכל׳סית (2-4 משפטים), ציין תמיד אם המלצת האוכל היא [בשרי], [חלבי] או [פרווה], ואל תערבב לעולם בשר וחלב.`;
 
@@ -2207,7 +2201,7 @@ ${memoryPrompt}
       if (msg.includes('שבת')) {
         return 'בשבת שומרים על חיוך: פרוסת חלה מדודה בקידוש, דג מרוקאי/סלמון ללא סוכר [פרווה], עוף צלוי עם סלטים חיים וטחינה [בשרי], וקינוח פרווה קליל. הרצף שלך נשמר אוטומטית!';
       }
-      return `אתה על BMI ${bmi} ונותרו לך ${remKg} ק״ג ליעד! היום צרכת ${sum.netCarbs}ג׳ פחמימות ו-${sum.waterLiters} ל׳ מים. שמור על חלבון כשר ואיכותי וצעד אחד רגוע כל יום.`;
+      return `אתה על BMI ${bmi} ונותרו לך ${remKg} ק״ג ליעד! היום צרכת ${sum.netCarbs}ג׳ פחמימות ו-${sum.protein}ג׳ חלבון. שמור על חלבון כשר ואיכותי וצעד אחד רגוע כל יום.`;
     }
 
     // =========================================================================
@@ -2439,18 +2433,15 @@ ${memoryPrompt}
       // אוכל: פחמימות מול יעד (4 נק׳)
       let food = 0;
       if (sum.meals.length) {
-        food = sum.netCarbs <= sum.carbTarget ? 4 : Math.max(0, 4 - ((sum.netCarbs - sum.carbTarget) / sum.carbTarget) * 8);
+        food = sum.netCarbs <= sum.carbTarget ? 4.5 : Math.max(0, 4.5 - ((sum.netCarbs - sum.carbTarget) / sum.carbTarget) * 9);
       }
-      parts.push({ id: 'food', label: '🥗 פחמימות', got: food, max: 4, note: sum.meals.length ? `${Math.round(sum.netCarbs)}/${sum.carbTarget}ג׳` : 'לא תועדו ארוחות' });
+      parts.push({ id: 'food', label: '🥗 פחמימות', got: food, max: 4.5, note: sum.meals.length ? `${Math.round(sum.netCarbs)}/${sum.carbTarget}ג׳` : 'לא תועדו ארוחות' });
       const prot = sum.meals.length ? Math.min(1, sum.protein / sum.proteinTarget) * 1.5 : 0;
       parts.push({ id: 'protein', label: '🍗 חלבון', got: prot, max: 1.5, note: `${Math.round(sum.protein)}/${sum.proteinTarget}ג׳` });
-      const sweets = Math.max(0, 2 - slips);
-      parts.push({ id: 'sweets', label: '🛡️ מתוקים', got: sweets, max: 2, note: slips ? `${slips} נפילות${wins ? `, ${wins} ניצחונות` : ''}` : (wins ? `${wins} ניצחונות 💪` : 'נקי') });
+      const sweets = Math.max(0, 2.5 - slips * 1.25);
+      parts.push({ id: 'sweets', label: '🛡️ מתוקים', got: sweets, max: 2.5, note: slips ? `${slips} נפילות${wins ? `, ${wins} ניצחונות` : ''}` : (wins ? `${wins} ניצחונות 💪` : 'נקי') });
       const act = Math.min(1, mins / 30) * 1.5;
       parts.push({ id: 'activity', label: '🏃 פעילות', got: act, max: 1.5, note: mins ? `${mins} דק׳` : 'לא נרשמה' });
-      let sleep = 0.5;
-      if (day.sleepHours !== null && day.sleepHours !== undefined) sleep = day.sleepHours >= 7 ? 1 : (day.sleepHours >= 6.5 ? 0.7 : 0.3);
-      parts.push({ id: 'sleep', label: '😴 שינה', got: sleep, max: 1, note: day.sleepHours != null ? `${day.sleepHours} ש׳` : 'לא דווחה' });
       const total = parts.reduce((a, p) => a + p.got, 0);
       const score = Math.max(1, Math.min(10, Math.round(total)));
       const weakest = parts.slice().sort((a, b) => (a.got / a.max) - (b.got / b.max))[0];
@@ -2459,7 +2450,6 @@ ${memoryPrompt}
         protein: 'מחר: להוסיף מנת חלבון (ביצים, עוף, יוגורט) לארוחת הבוקר.',
         sweets: 'מחר: להכין חלופה מוכנה לשעת הסיכון, ולהשתמש ב-SOS לפני שפותחים את המזווה.',
         activity: 'מחר: 15 דקות הליכה אחרי ארוחה. זה כל מה שצריך לרצף.',
-        sleep: 'הלילה: מסך כבוי חצי שעה לפני השינה. שינה טובה מורידה חשק למתוק.',
       };
       const tip = score >= 9 ? 'יום מצוין! לחזור על אותו דבר מחר.' : TIPS[weakest.id];
       return { score, parts, tip, slips, wins, mins, sum };
@@ -2499,7 +2489,7 @@ ${memoryPrompt}
         carbs: Math.round(r.sum.netCarbs), carbTarget: r.sum.carbTarget, protein: Math.round(r.sum.protein), proteinTarget: r.sum.proteinTarget,
         activities: dayActivities(state.days[key]).map(a => ({ type: activityType(a.type).label, minutes: a.minutes })),
         activeDaysThisWeek: computeActivityStats().activeDays7,
-        sleepHours: state.days[key].sleepHours, sweetSlips: r.slips, cravingsResisted: r.wins,
+        sweetSlips: r.slips, cravingsResisted: r.wins,
       };
       const raw = await callGemini({
         contents: [{ role: 'user', parts: [{ text: `סיכום יום. הנתונים: ${JSON.stringify(data)}\nכתוב המלצה אחת קצרצרה להמשך (עד 14 מילים), מעשית וספציפית לנתונים. החזר JSON: {"tip":"..."}` }] }],
@@ -2652,17 +2642,7 @@ ${memoryPrompt}
       const bannerIcon = document.getElementById('wittyBannerIcon');
       const bannerText = document.getElementById('wittyBannerText');
 
-      if (sum.sleepHours !== null && sum.sleepHours < 6.5) {
-        bannerEl.className = 'px-3.5 py-2.5 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-start gap-2.5';
-        bannerIcon.textContent = '💛';
-        bannerText.className = 'text-xs text-amber-950 leading-relaxed font-medium';
-        bannerText.textContent = `מצב חמלה ללילה קצר (${sum.sleepHours} ש׳ שינה): היום מתמקדים בחלבון כשר, ${sum.waterTarget} ל׳ מים ו-0 רגשות אשם — אל תיפול למלכודת הסוכר!`;
-      } else if (sum.waterLiters >= sum.waterTarget) {
-        bannerEl.className = 'px-3.5 py-2.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 flex items-start gap-2.5';
-        bannerIcon.textContent = '💧';
-        bannerText.className = 'text-xs text-emerald-950 leading-relaxed font-medium';
-        bannerText.textContent = `אלוף! הגעת ל-${sum.waterLiters.toFixed(2)} ליטר מים — החיוניות למעלה והרעב המדומה מנוטרל.`;
-      } else if (sum.netCarbs > sum.carbTarget) {
+      if (sum.netCarbs > sum.carbTarget) {
         bannerEl.className = 'px-3.5 py-2.5 rounded-2xl bg-amber-50/70 border border-amber-200/70 flex items-start gap-2.5';
         bannerIcon.textContent = '🌿';
         bannerText.className = 'text-xs text-slate-700 leading-relaxed font-medium';
@@ -2674,24 +2654,6 @@ ${memoryPrompt}
         bannerText.textContent = sum.meals.length > 0
           ? `איזון נהדר! צרכת ${sum.netCarbs}ג׳ פחמימות ו-${sum.protein}ג׳ חלבון — שליטה רגועה ובלי דרמות.`
           : 'יום חדש, דף חלק! תעד ארוחה כשרה בצילום או בנגיעה ונשמור על אנרגיה גבוהה.';
-      }
-
-      document.getElementById('habitWaterVal').textContent = sum.waterLiters.toFixed(2);
-      document.getElementById('habitWaterTarget').textContent = sum.waterTarget.toFixed(1);
-      const waterPct = Math.min(100, Math.round((sum.waterLiters / sum.waterTarget) * 100));
-      document.getElementById('waterCardFill').style.height = `${waterPct}%`;
-
-      const sleepValEl = document.getElementById('habitSleepVal');
-      const sleepTagEl = document.getElementById('sleepShortTag');
-      if (sum.sleepHours === null) {
-        sleepValEl.textContent = 'לא דווח';
-        sleepValEl.className = 'text-xs font-extrabold text-slate-400 mt-1';
-        sleepTagEl.classList.add('hidden');
-      } else {
-        sleepValEl.textContent = `${sum.sleepHours} ש׳`;
-        sleepValEl.className = 'text-sm font-extrabold text-slate-900 mt-0.5';
-        if (sum.sleepHours < 6.5) sleepTagEl.classList.remove('hidden');
-        else sleepTagEl.classList.add('hidden');
       }
 
       renderMoveCard();
@@ -3031,7 +2993,7 @@ ${memoryPrompt}
               <div>
                 <div class="text-xs font-extrabold text-slate-900">${dayTitle}</div>
                 <div class="text-[11px] text-slate-500 font-semibold mt-0.5 tabular-nums">
-                  ${sum.netCarbs}ג׳ פחמימה • ${sum.protein}ג׳ חלבון • 💧 ${sum.waterLiters}ל׳ • חיוניות ${sum.vitality}%
+                  ${sum.netCarbs}ג׳ פחמימה • ${sum.protein}ג׳ חלבון • 🏃 ${sum.movementMinutes} דק׳ • חיוניות ${sum.vitality}%
                 </div>
               </div>
               <span class="text-xs font-bold text-teal-600 group-open:rotate-180 transition">▾</span>
@@ -3124,7 +3086,7 @@ ${memoryPrompt}
 
       const insContainer = document.getElementById('discoveredInsightsContainer');
       if (state.aiMemory.discoveredInsights.length === 0) {
-        insContainer.innerHTML = '<p class="text-xs text-slate-500 text-center py-3 leading-relaxed">עוד אין תובנות. תעד ארוחות, מים ושינה, ואחרי כמה ימים לחץ על ״הפעל סריקת למידה עמוקה״ והן יופיעו כאן, מבוססות על הנתונים שלך.</p>';
+        insContainer.innerHTML = '<p class="text-xs text-slate-500 text-center py-3 leading-relaxed">עוד אין תובנות. תעד ארוחות, פעילות וחשקים, ואחרי כמה ימים לחץ על ״הפעל סריקת למידה עמוקה״ והן יופיעו כאן, מבוססות על הנתונים שלך.</p>';
       } else insContainer.innerHTML = state.aiMemory.discoveredInsights.map(ins => {
         const upCls = ins.feedback === 'up' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-500 border-slate-200';
         const downCls = ins.feedback === 'down' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-500 border-slate-200';
@@ -3206,10 +3168,10 @@ ${memoryPrompt}
       'עקביות רגועה מנצחת כל דיאטת קיצון.',
       'אין "הכל או כלום". גם יום חלקי נחשב ✨',
       'חלבון בכל ארוחה = שובע ושמירה על שריר. פשוט ויעיל 💪',
-      'מים לפני החלטות. לפעמים זה רק צמא בתחפושת 💧',
+      '15 דקות הליכה אחרי ארוחה עושות פלאים לחשק למתוק 🚶',
       'חצי קילו בשבוע זה קצב מצוין, יציב ובר-קיימא.',
       'שבת היא ההפסקה שמאפשרת להמשיך. אין צורך לחשב אותה 🕯️',
-      'התקדמות לא תמיד נראית על המשקל — שינה ותנועה נחשבות גם הן 😴',
+      'התקדמות לא תמיד נראית על המשקל — גם התמדה בפעילות נחשבת 🏃',
       'נפלת? מנערים וממשיכים. הארוחה הבאה היא התחלה חדשה 🌿',
       'החלק הכי קשה הוא להתמיד, ואתה כבר בתוכו.'
     ];
@@ -4141,8 +4103,6 @@ ${memoryPrompt}
         const meals = (d && d.meals) || [];
         days.push({
           date: k,
-          sleep: d ? d.sleepHours : null,
-          water: d ? d.waterLiters : 0,
           move: d ? d.movementMinutes : 0,
           carbs: meals.reduce((s, m) => s + (Number(m.carbs ?? m.netCarbs) || 0), 0),
           protein: meals.reduce((s, m) => s + (Number(m.protein) || 0), 0),
@@ -4161,12 +4121,6 @@ ${memoryPrompt}
       const st = computeCleanStats();
       if (st.riskMinutes !== null) out.push({ title: `שעת הסיכון: ${fmtMinutes(st.riskMinutes)}`, detail: 'רוב החשקים שלך מגיעים בשעה הזו. תכין מראש חלופה ותשתה משהו חם כמה דקות לפני.' });
       if (st.topTrigger) out.push({ title: `הטריגר המוביל: ${st.topTrigger.label}`, detail: 'כשהטריגר הזה מופיע, עצור 10 דקות עם כפתור ה-SOS לפני כל החלטה.' });
-      const short = days.filter(d => d.sleep !== null && d.sleep < 6.5);
-      const rest = days.filter(d => d.sleep !== null && d.sleep >= 6.5);
-      const rate = arr => arr.length ? arr.reduce((s, d) => s + d.cravings.length, 0) / arr.length : null;
-      if (short.length >= 2 && rest.length >= 2 && rate(short) > rate(rest)) {
-        out.push({ title: 'שינה קצרה = יותר חשקים', detail: `בימים עם פחות מ-6.5 שעות שינה: ${rate(short).toFixed(1)} חשקים ליום, לעומת ${rate(rest).toFixed(1)} בימים אחרים.` });
-      }
       return out;
     }
 
@@ -4178,8 +4132,8 @@ ${memoryPrompt}
       let items = null;
       const raw = await callGemini({
         contents: [{ role: 'user', parts: [{ text: `אתה מאמן תזונה ישראלי חם וישיר. המטרה של המשתמש: לא ליפול למתוקים וחטיפים. הנה נתוני 30 הימים האחרונים שלו (JSON): ${JSON.stringify(days)}.
-בכל יום: שעות שינה, מים, תנועה, פחמימות נטו, חלבון, ומערך eaten (t=שעת אכילה, n=מה, c=פחמימות, p=חלבון), ומערך cravings עם hour (שעה), trigger (טריגר) ו-outcome (resisted=עמד בחשק, gave_in=נכנע).
-מצא 2-3 דפוסים אמיתיים שמופיעים בנתונים בלבד (למשל קשר בין שינה, חלבון, מרווחים ארוכים בין ארוחות, אכילה מאוחרת או שעה לבין חשקים). אסור להמציא. אם אין מספיק נתונים אמור זאת. לכל דפוס תן title קצר ו-detail עם צעד מעשי אחד. החזר JSON בלבד.` }] }],
+בכל יום: דקות תנועה, פחמימות נטו, חלבון, ומערך eaten (t=שעת אכילה, n=מה, c=פחמימות, p=חלבון), ומערך cravings עם hour (שעה), trigger (טריגר) ו-outcome (resisted=עמד בחשק, gave_in=נכנע).
+מצא 2-3 דפוסים אמיתיים שמופיעים בנתונים בלבד (למשל קשר בין תנועה, חלבון, מרווחים ארוכים בין ארוחות, אכילה מאוחרת או שעה לבין חשקים). אסור להמציא. אם אין מספיק נתונים אמור זאת. לכל דפוס תן title קצר ו-detail עם צעד מעשי אחד. החזר JSON בלבד.` }] }],
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: { type: 'OBJECT', properties: { insights: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, detail: { type: 'STRING' } }, required: ['title', 'detail'] } } }, required: ['insights'] }
