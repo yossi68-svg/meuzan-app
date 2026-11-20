@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.9.0';
+window.__APP_VERSION = 'v1.9.1';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -2767,24 +2767,53 @@ ${memoryPrompt}
       const out = document.getElementById('foodCheckResult');
       if (!text) { showToast('כתוב מה בא לך לאכול'); return; }
       const learned = findLearnedMeal(text);
-      let food = null, ai = null;
+      let food = null, ai = null, aiFailed = false;
       if (learned) food = { name: learned.name, netCarbs: learned.netCarbs, protein: learned.protein, calories: learned.calories, kosherType: learned.kosherType, isSweet: isSweetText(learned.name + ' ' + text) };
       const today = getTodayKey();
       const sum = computeDaySummary(today);
       if (getGeminiKey() && navigator.onLine) {
         out.innerHTML = '<p class="text-sm text-slate-500 text-center py-4 animate-pulse">🧠 בודק מול היום שלך…</p>';
         const wait = getKosherWaitStatus();
+        // הקשר עשיר: 7 ימים אחרונים, דפוסי חשק, שעת סיכון, פעילות ותובנות השבוע
+        const hist = [];
+        for (let i = 1; i <= 7; i++) {
+          const d = new Date(); d.setDate(d.getDate() - i);
+          const k = getDateKeyOf(d), day = state.days[k];
+          if (!day || !(day.meals || []).length) continue;
+          hist.push({ d: k.slice(5), carbs: Math.round(day.meals.reduce((x, m) => x + (Number(m.carbs ?? m.netCarbs) || 0), 0)),
+            meals: day.meals.map(m => `${m.time} ${m.name}`).join(', ').slice(0, 220),
+            slips: cravingList().filter(c => c.dateKey === k && c.outcome === 'gave_in').length });
+        }
+        const cr = cravingList().slice(-40);
+        const trig = {}; cr.forEach(c => { if (c.trigger) trig[c.trigger] = (trig[c.trigger] || 0) + 1; });
+        let riskAt = null; try { const rm = window.MeuzanNotify && MeuzanNotify.riskMinutes(state, new Date()); if (rm != null && rm >= 0) riskAt = `${String(Math.floor(rm / 60)).padStart(2, '0')}:00`; } catch (e) {}
+        const lastWeek = Object.keys(weeklyList()).sort().slice(-1).map(k => weeklyList()[k])[0];
+        const ctx = {
+          now: new Date().toTimeString().slice(0, 5),
+          dayOfWeek: ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'][new Date().getDay()],
+          today: { carbs: Math.round(sum.netCarbs), carbTarget: sum.carbTarget, protein: Math.round(sum.protein), proteinTarget: sum.proteinTarget, calories: Math.round(sum.calories || 0),
+            meals: sum.meals.map(m => `${m.time} ${m.name} (${Math.round(Number(m.carbs ?? m.netCarbs) || 0)}ג׳)`),
+            activityMin: dayActiveMinutes(state.days[today]),
+            sweetsToday: { slips: cravingList().filter(c => c.dateKey === today && c.outcome === 'gave_in').length, resisted: cravingList().filter(c => c.dateKey === today && c.outcome !== 'gave_in').length } },
+          kosherWaitRemaining: wait.isWaiting ? wait.formatted : null,
+          last7days: hist,
+          cravingTriggers: trig, cravingRiskTime: riskAt,
+          activeDaysThisWeek: computeActivityStats().activeDays7,
+          lastWeeklyLessons: lastWeek ? lastWeek.lessons : [],
+          knownValues: learned ? { carbs: learned.netCarbs, protein: learned.protein, kosher: learned.kosherType } : null,
+        };
         const raw = await callGemini({
-          contents: [{ role: 'user', parts: [{ text: `המשתמש שוקל לאכול עכשיו (${new Date().toTimeString().slice(0, 5)}): "${text}".
-היום עד עכשיו: ${Math.round(sum.netCarbs)}/${sum.carbTarget}ג׳ פחמימות נטו, ${Math.round(sum.protein)}/${sum.proteinTarget}ג׳ חלבון. ארוחות: ${sum.meals.map(m => `${m.time} ${m.name}`).join('; ') || 'אין'}.
-${wait.isWaiting ? `ממתין מבשרי לחלבי: עוד ${wait.formatted}.` : ''} פעילות היום: ${dayActiveMinutes(state.days[today])} דק׳.
-${learned ? `ערכים ידועים מהזיכרון: ${learned.netCarbs}ג׳ פחמימה, ${learned.protein}ג׳ חלבון, ${learned.kosherType}.` : 'הערך מנה סבירה.'}
-החזר JSON: name, netCarbs, protein, calories, kosherType ("בשרי"/"חלבי"/"פרווה"), isSweet (בוליאני: מתוק/חטיף/מאפה), reason (משפט אחד עד 14 מילים: למה מתאים או לא, לפי היום), better (חלופה או התאמה קונקרטית שמשאירה את ההנאה, עד 10 מילים; למשל חצי מנה או שילוב חלבון), betterMeal (שם קצר של החלופה לתיעוד).` }] }],
+          contents: [{ role: 'user', parts: [{ text: `בדיקה לפני אכילה. המשתמש שוקל לאכול עכשיו: "${text}".
+הקשר מלא (JSON): ${JSON.stringify(ctx)}
+המטרה שלו: ירידה במשקל בדל-פחמימה כשר, ובעיקר לא ליפול למתוקים וחטיפים.
+שקול: כמה נשאר מהיעד, חלבון חסר, שעה ושעת הסיכון לחשקים, דפוסי הימים האחרונים (נפילות, אכילה מאוחרת), האם זה רעב או חשק, כשרות (חלבי בזמן המתנה = לא).
+החזר JSON: name, netCarbs, protein, calories (הערכה למנה שתוארה), kosherType ("בשרי"/"חלבי"/"פרווה"), isSweet (מתוק/חטיף/מאפה), fit (0-100: התאמה לרגע הזה), reason (משפט אחד עד 16 מילים, ספציפי לנתונים שלו), better (חלופה או התאמה מעשית שמשאירה הנאה, עד 12 מילים), betterMeal (שם קצר של החלופה לתיעוד, ריק אם אין).` }] }],
           generationConfig: {
-            responseMimeType: 'application/json', temperature: 0.4,
-            responseSchema: { type: 'OBJECT', properties: { name: { type: 'STRING' }, netCarbs: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, calories: { type: 'NUMBER' }, kosherType: { type: 'STRING' }, isSweet: { type: 'BOOLEAN' }, reason: { type: 'STRING' }, better: { type: 'STRING' }, betterMeal: { type: 'STRING' } }, required: ['name', 'netCarbs', 'protein', 'kosherType', 'isSweet', 'reason', 'better'] }
+            responseMimeType: 'application/json', temperature: 0.35,
+            responseSchema: { type: 'OBJECT', properties: { name: { type: 'STRING' }, netCarbs: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, calories: { type: 'NUMBER' }, kosherType: { type: 'STRING' }, isSweet: { type: 'BOOLEAN' }, fit: { type: 'INTEGER' }, reason: { type: 'STRING' }, better: { type: 'STRING' }, betterMeal: { type: 'STRING' } }, required: ['name', 'netCarbs', 'protein', 'kosherType', 'isSweet', 'fit', 'reason', 'better'] }
           },
         });
+        if (!raw) aiFailed = true;
         try {
           ai = raw && JSON.parse(raw);
           if (ai && !learned) food = { name: ai.name || text, netCarbs: Math.round(Number(ai.netCarbs) || 0), protein: Math.round(Number(ai.protein) || 0), calories: Math.round(Number(ai.calories) || 0), kosherType: ['בשרי', 'חלבי', 'פרווה'].includes(ai.kosherType) ? ai.kosherType : 'פרווה', isSweet: !!ai.isSweet || isSweetText(text) };
@@ -2794,12 +2823,19 @@ ${learned ? `ערכים ידועים מהזיכרון: ${learned.netCarbs}ג׳ �
       if (!food) {
         const sweet = isSweetText(text);
         if (!sweet) {
-          out.innerHTML = '<p class="text-sm text-slate-600 text-center py-3">עוד לא מכיר את המנה הזו. עם מפתח Gemini אני מחשב כל מנה. מנה שתתעד פעם אחת — אזהה בפעם הבאה גם בלי AI.</p>';
+          out.innerHTML = aiFailed
+            ? '<p class="text-sm text-amber-700 text-center py-3">⚠️ Gemini לא ענה (בדוק אינטרנט או את המפתח בהגדרות). נסה שוב.</p>'
+            : '<p class="text-sm text-slate-600 text-center py-3">עוד לא מכיר את המנה הזו. עם מפתח Gemini בהגדרות אני מנתח כל מנה. מנה שתתעד פעם אחת — אזהה בפעם הבאה גם בלי AI.</p>';
           return;
         }
         food = { name: text, netCarbs: 25, protein: 2, calories: 200, kosherType: /חלב|שוקולד|גלידה/.test(text) ? 'חלבי' : 'פרווה', isSweet: true, rough: true };
       }
       const sc = scoreFoodFit(food);
+      // שילוב: חצי חישוב קבוע מהנתונים, חצי שיקול דעת של Gemini. כשרות ותקרת מתוק נשארות חוקים קשיחים.
+      if (ai && !sc.block && Number.isFinite(Number(ai.fit))) {
+        sc.fit = Math.round((sc.fit + Math.max(0, Math.min(100, Number(ai.fit)))) / 2);
+        if (food.isSweet) sc.fit = Math.min(sc.fit, 60);
+      }
       foodCheckLast = { text, food, sc, better: ai && ai.better, betterMeal: ai && (ai.betterMeal || '') };
       const tone = sc.block || sc.fit < 45 ? ['🔴', 'לא כדאי עכשיו', 'bg-rose-50 border-rose-200 text-rose-700']
         : sc.fit < 75 ? ['🟡', 'אפשר, עם התאמה', 'bg-amber-50 border-amber-200 text-amber-700']
@@ -2810,6 +2846,7 @@ ${learned ? `ערכים ידועים מהזיכרון: ${learned.netCarbs}ג׳ �
             <span class="text-base font-extrabold">${tone[0]} ${tone[1]}</span>
             <span class="text-2xl font-extrabold tabular-nums">${sc.fit}%</span>
           </div>
+          <div class="text-[11px] font-extrabold ${ai ? 'text-violet-600' : 'text-slate-400'}">${ai ? '✨ נותח ע״י Gemini' : (aiFailed ? '⚠️ Gemini לא ענה — חישוב מקומי בלבד' : (getGeminiKey() ? 'חישוב מקומי (אופליין)' : 'חישוב מקומי — הוסף מפתח Gemini בהגדרות לניתוח מלא'))}</div>
           <div class="text-[12px] font-bold text-slate-700">${food.name} · ${food.netCarbs}ג׳ פחמימה · ${food.protein}ג׳ חלבון · ${food.kosherType}${food.rough ? ' · הערכה גסה' : ''}</div>
           ${ai && ai.reason ? `<p class="text-sm font-bold text-slate-800 leading-snug">${ai.reason}</p>` : ''}
           <ul class="text-[12px] text-slate-600 space-y-0.5">${sc.reasons.map(r => `<li>• ${r}</li>`).join('')}</ul>
