@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.8.1';
+window.__APP_VERSION = 'v1.9.0';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -2708,6 +2708,142 @@ ${memoryPrompt}
     }
     function closeWeeklySummary() { document.getElementById('weeklyModal').classList.add('hidden'); }
 
+
+    // =========================================================================
+    // 13g. "כדאי לי?" — בדיקת התאמה לפני שאוכלים
+    // =========================================================================
+    const SWEET_WORDS = ['שוקולד','עוגה','עוגי','במבה','ביסלי','חטיף','גלידה','סוכרי','ממתק','וופל','קרואסון','דונאט','סופגני','בורקס','רוגלך','מאפה','צ׳יפס','ציפס','קולה','מיץ','פופקורן','בייגלה','חלווה','בקלאווה','קינוח','מאפין','עוגיה','פסק זמן','קליק','טורט'];
+    let foodCheckLast = null;
+
+    function isSweetText(t) { const n = String(t || ''); return SWEET_WORDS.some(w => n.includes(w)); }
+
+    function scoreFoodFit(food) {
+      const today = getTodayKey();
+      const sum = computeDaySummary(today);
+      const now = new Date();
+      const hour = now.getHours();
+      const remaining = sum.carbTarget - sum.netCarbs;
+      const proteinGap = sum.proteinTarget - sum.protein;
+      const wait = getKosherWaitStatus();
+      const slipsToday = cravingList().filter(c => c.dateKey === today && c.outcome === 'gave_in').length;
+      const reasons = [];
+      let fit = 100;
+      if (food.kosherType === 'חלבי' && wait.isWaiting) {
+        return { fit: 0, block: true, reasons: [`🕒 עוד ${wait.formatted} עד חלבי`], remaining, proteinGap };
+      }
+      const c = Number(food.netCarbs) || 0;
+      if (c > Math.max(0, remaining)) {
+        fit -= Math.min(70, Math.round(((c - Math.max(0, remaining)) / sum.carbTarget) * 150));
+        reasons.push(remaining > 0 ? `חורג ב-${Math.round(c - remaining)}ג׳ מהפחמימות שנשארו (${Math.round(remaining)}ג׳)` : `כבר עברת את יעד הפחמימות להיום`);
+      } else {
+        reasons.push(`${Math.round(c)}ג׳ פחמימה, נשארו לך ${Math.round(remaining)}ג׳`);
+      }
+      if (c >= 30) fit -= 15;
+      if (food.isSweet) {
+        fit -= slipsToday ? 35 : 25;
+        reasons.push(slipsToday ? 'כבר הייתה נפילה למתוק היום' : 'מתוק — מעורר חשק להמשך');
+      }
+      if (hour >= 21 && c > 10) { fit -= 15; reasons.push('שעה מאוחרת לפחמימות'); }
+      const p = Number(food.protein) || 0;
+      if (p >= 20 && proteinGap > 20) { fit += 10; reasons.push(`+${Math.round(p)}ג׳ חלבון שחסר לך היום`); }
+      if (sum.meals.length >= 5 && hour - (Number(String((sum.meals[sum.meals.length - 1] || {}).time || '0').split(':')[0]) || 0) < 2) {
+        fit -= 10; reasons.push('אכלת לפני פחות משעתיים — אולי זה חשק ולא רעב?');
+      }
+      if (food.isSweet) fit = Math.min(fit, 60); // מתוק אף פעם לא ״ירוק״ — המטרה היא להתרחק ממתוקים
+      return { fit: Math.max(0, Math.min(100, Math.round(fit))), block: false, reasons: reasons.slice(0, 3), remaining, proteinGap };
+    }
+
+    function openFoodCheck() {
+      document.getElementById('foodCheckModal').classList.remove('hidden');
+      document.getElementById('foodCheckResult').innerHTML = '';
+      const i = document.getElementById('foodCheckInput');
+      i.value = '';
+      setTimeout(() => i.focus(), 80);
+    }
+    function closeFoodCheck() { document.getElementById('foodCheckModal').classList.add('hidden'); }
+
+    async function runFoodCheck() {
+      const text = document.getElementById('foodCheckInput').value.trim();
+      const out = document.getElementById('foodCheckResult');
+      if (!text) { showToast('כתוב מה בא לך לאכול'); return; }
+      const learned = findLearnedMeal(text);
+      let food = null, ai = null;
+      if (learned) food = { name: learned.name, netCarbs: learned.netCarbs, protein: learned.protein, calories: learned.calories, kosherType: learned.kosherType, isSweet: isSweetText(learned.name + ' ' + text) };
+      const today = getTodayKey();
+      const sum = computeDaySummary(today);
+      if (getGeminiKey() && navigator.onLine) {
+        out.innerHTML = '<p class="text-sm text-slate-500 text-center py-4 animate-pulse">🧠 בודק מול היום שלך…</p>';
+        const wait = getKosherWaitStatus();
+        const raw = await callGemini({
+          contents: [{ role: 'user', parts: [{ text: `המשתמש שוקל לאכול עכשיו (${new Date().toTimeString().slice(0, 5)}): "${text}".
+היום עד עכשיו: ${Math.round(sum.netCarbs)}/${sum.carbTarget}ג׳ פחמימות נטו, ${Math.round(sum.protein)}/${sum.proteinTarget}ג׳ חלבון. ארוחות: ${sum.meals.map(m => `${m.time} ${m.name}`).join('; ') || 'אין'}.
+${wait.isWaiting ? `ממתין מבשרי לחלבי: עוד ${wait.formatted}.` : ''} פעילות היום: ${dayActiveMinutes(state.days[today])} דק׳.
+${learned ? `ערכים ידועים מהזיכרון: ${learned.netCarbs}ג׳ פחמימה, ${learned.protein}ג׳ חלבון, ${learned.kosherType}.` : 'הערך מנה סבירה.'}
+החזר JSON: name, netCarbs, protein, calories, kosherType ("בשרי"/"חלבי"/"פרווה"), isSweet (בוליאני: מתוק/חטיף/מאפה), reason (משפט אחד עד 14 מילים: למה מתאים או לא, לפי היום), better (חלופה או התאמה קונקרטית שמשאירה את ההנאה, עד 10 מילים; למשל חצי מנה או שילוב חלבון), betterMeal (שם קצר של החלופה לתיעוד).` }] }],
+          generationConfig: {
+            responseMimeType: 'application/json', temperature: 0.4,
+            responseSchema: { type: 'OBJECT', properties: { name: { type: 'STRING' }, netCarbs: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, calories: { type: 'NUMBER' }, kosherType: { type: 'STRING' }, isSweet: { type: 'BOOLEAN' }, reason: { type: 'STRING' }, better: { type: 'STRING' }, betterMeal: { type: 'STRING' } }, required: ['name', 'netCarbs', 'protein', 'kosherType', 'isSweet', 'reason', 'better'] }
+          },
+        });
+        try {
+          ai = raw && JSON.parse(raw);
+          if (ai && !learned) food = { name: ai.name || text, netCarbs: Math.round(Number(ai.netCarbs) || 0), protein: Math.round(Number(ai.protein) || 0), calories: Math.round(Number(ai.calories) || 0), kosherType: ['בשרי', 'חלבי', 'פרווה'].includes(ai.kosherType) ? ai.kosherType : 'פרווה', isSweet: !!ai.isSweet || isSweetText(text) };
+          if (ai && learned) food.isSweet = food.isSweet || !!ai.isSweet;
+        } catch (e) { ai = null; }
+      }
+      if (!food) {
+        const sweet = isSweetText(text);
+        if (!sweet) {
+          out.innerHTML = '<p class="text-sm text-slate-600 text-center py-3">עוד לא מכיר את המנה הזו. עם מפתח Gemini אני מחשב כל מנה. מנה שתתעד פעם אחת — אזהה בפעם הבאה גם בלי AI.</p>';
+          return;
+        }
+        food = { name: text, netCarbs: 25, protein: 2, calories: 200, kosherType: /חלב|שוקולד|גלידה/.test(text) ? 'חלבי' : 'פרווה', isSweet: true, rough: true };
+      }
+      const sc = scoreFoodFit(food);
+      foodCheckLast = { text, food, sc, better: ai && ai.better, betterMeal: ai && (ai.betterMeal || '') };
+      const tone = sc.block || sc.fit < 45 ? ['🔴', 'לא כדאי עכשיו', 'bg-rose-50 border-rose-200 text-rose-700']
+        : sc.fit < 75 ? ['🟡', 'אפשר, עם התאמה', 'bg-amber-50 border-amber-200 text-amber-700']
+        : ['🟢', 'מתאים להיום', 'bg-emerald-50 border-emerald-200 text-emerald-700'];
+      out.innerHTML = `
+        <div class="p-3.5 rounded-2xl border ${tone[2]} space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="text-base font-extrabold">${tone[0]} ${tone[1]}</span>
+            <span class="text-2xl font-extrabold tabular-nums">${sc.fit}%</span>
+          </div>
+          <div class="text-[12px] font-bold text-slate-700">${food.name} · ${food.netCarbs}ג׳ פחמימה · ${food.protein}ג׳ חלבון · ${food.kosherType}${food.rough ? ' · הערכה גסה' : ''}</div>
+          ${ai && ai.reason ? `<p class="text-sm font-bold text-slate-800 leading-snug">${ai.reason}</p>` : ''}
+          <ul class="text-[12px] text-slate-600 space-y-0.5">${sc.reasons.map(r => `<li>• ${r}</li>`).join('')}</ul>
+        </div>
+        ${ai && ai.better ? `<div class="p-3 rounded-2xl bg-teal-50 border border-teal-100"><div class="text-[11px] font-extrabold text-teal-700">💡 חלופה חכמה</div><p class="text-sm font-bold text-slate-800">${ai.better}</p></div>` : ''}
+        ${food.isSweet ? '<button onclick="closeFoodCheck(); openCraving()" class="w-full py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-extrabold active:scale-95">⏱️ קודם 10 דקות SOS — ואז נחליט</button>' : ''}
+        <div class="grid ${ai && ai.betterMeal ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5">
+          <button onclick="foodCheckEat(false)" class="py-2.5 rounded-2xl bg-slate-800 text-white text-xs font-extrabold active:scale-95">אכלתי ✍️</button>
+          ${ai && ai.betterMeal ? '<button onclick="foodCheckEat(true)" class="py-2.5 rounded-2xl bg-teal-600 text-white text-xs font-extrabold active:scale-95">אכלתי חלופה</button>' : ''}
+          <button onclick="foodCheckSkip()" class="py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-extrabold active:scale-95">ויתרתי 💪</button>
+        </div>`;
+    }
+
+    function foodCheckEat(useBetter) {
+      const fc = foodCheckLast;
+      if (!fc) return;
+      state.selectedDateKey = getTodayKey();
+      const ta = document.getElementById('mealDescInput');
+      if (!useBetter && !fc.food.rough) {
+        learnMeal({ name: fc.food.name, netCarbs: fc.food.netCarbs, protein: fc.food.protein, calories: fc.food.calories, kosherType: fc.food.kosherType, status: fc.food.netCarbs >= 30 ? 'high' : 'good' }, fc.text);
+      }
+      if (!useBetter && fc.food.isSweet && fc.sc.fit < 45) { cravingTrigger = 'בדיקה לפני אכילה'; logCraving('gave_in', fc.food.netCarbs); }
+      ta.value = useBetter ? fc.betterMeal : fc.text;
+      closeFoodCheck();
+      quickAddMeal();
+    }
+
+    function foodCheckSkip() {
+      const fc = foodCheckLast;
+      if (fc && fc.food.isSweet) { cravingTrigger = 'בדיקה לפני אכילה'; logCraving('resisted', 0); saveState(); renderAll(); }
+      closeFoodCheck();
+      showToast(fc && fc.food.isSweet ? '💪 ניצחון! נספר במגן המתוקים' : '👍 החלטה טובה');
+    }
+
     // =========================================================================
     // 13. RENDERING FUNCTIONS
     // =========================================================================
@@ -4112,6 +4248,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
+      openFoodCheck, closeFoodCheck, runFoodCheck, foodCheckEat, foodCheckSkip,
       openWeeklySummary, closeWeeklySummary,
       openActivity, closeActivity, setActType, setActMins, saveActivity, deleteActivity, openDaySummary, closeDaySummary,
       backupToDrive, openEatingJournal, quickAddMeal, addWaist, runCravingInsights, purgeDemoData, openCraving, closeCraving, setCravingTrigger, finishCraving, confirmSlip, openProductCheck, closeProductCheck, startScan, runProductSearch, showProduct, logProduct, skipProduct,
