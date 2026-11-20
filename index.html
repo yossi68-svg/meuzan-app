@@ -886,6 +886,7 @@
       <div class="pt-3 border-t border-slate-100 space-y-1.5">
         <label for="settingGeminiKeyInput" class="block text-xs font-bold text-slate-700">מפתח Gemini API (ל-AI: ניתוח ארוחות, מאמן)</label>
         <input type="password" id="settingGeminiKeyInput" dir="ltr" autocomplete="off" placeholder="AIza..." class="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        <div class="flex items-center gap-2"><button type="button" onclick="testGeminiKey()" class="shrink-0 px-3 py-2 rounded-xl bg-violet-50 border border-violet-200 text-violet-700 text-xs font-extrabold">🔌 בדוק חיבור</button><span id="geminiTestOut" class="text-[11px] font-bold text-slate-600 break-words min-w-0"></span></div>
         <p class="text-[10px] text-slate-400 leading-snug">נשמר רק במכשיר הזה (לא בענן ולא בגיבוי). בלי מפתח האפליקציה עובדת עם ניתוח מקומי פשוט.</p>
       </div>
 
@@ -1070,7 +1071,7 @@
   <script>
     // ריפוי עצמי: אם app.js שנטען אינו מהגרסה של דף זה (מטמון ישן), מנקים מטמון ושירות עובד וטוענים מחדש פעם אחת.
     (function () {
-      var EXPECT = 'v1.9.1';
+      var EXPECT = 'v1.9.2';
       window.addEventListener('load', function () {
         setTimeout(function () {
           if (window.__APP_VERSION === EXPECT) return;

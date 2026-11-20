@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.9.1';
+window.__APP_VERSION = 'v1.9.2';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -275,7 +275,7 @@ window.__APP_VERSION = 'v1.9.1';
     }
 
     function getGeminiKey() {
-      try { return localStorage.getItem(GEMINI_KEY_STORAGE) || ''; } catch (e) { return ''; }
+      try { return String(localStorage.getItem(GEMINI_KEY_STORAGE) || '').replace(/["'\s]/g, ''); } catch (e) { return ''; }
     }
 
     // ---- Firebase (loaded lazily, only if firebase-config.js is filled in) ----
@@ -702,6 +702,19 @@ window.__APP_VERSION = 'v1.9.1';
       }
     }
 
+    async function testGeminiKey() {
+      const out = document.getElementById('geminiTestOut');
+      const inp = document.getElementById('settingGeminiKeyInput');
+      const k = String(inp.value || '').replace(/["'\s]/g, '');
+      if (!k) { out.textContent = 'הדבק מפתח קודם'; return; }
+      try { localStorage.setItem(GEMINI_KEY_STORAGE, k); } catch (e) {}
+      noKeyToastShown = false;
+      out.textContent = 'בודק…';
+      const t0 = Date.now();
+      const raw = await callGemini({ contents: [{ role: 'user', parts: [{ text: 'החזר JSON {"ok":true}' }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { ok: { type: 'BOOLEAN' } }, required: ['ok'] } } });
+      out.innerHTML = raw ? `✅ Gemini מחובר (${((Date.now() - t0) / 1000).toFixed(1)} שנ׳)` : `❌ לא עובד: <span dir="ltr">${(lastGeminiError || 'לא ידוע').replace(/</g, '&lt;')}</span>`;
+    }
+
     async function backupToDrive() {
       if (getDriveClient()) {
         if (await autoDriveBackup(true)) return;
@@ -958,7 +971,9 @@ window.__APP_VERSION = 'v1.9.1';
 כללי אמינות: התבסס רק על הנתונים שקיבלת. אל תמציא מספרים או דפוסים. כשאין מספיק נתונים, אמור זאת. אתה לא רופא: בבעיה רפואית הפנה לרופא, ואל תמליץ על דיאטות קיצוניות.
 כשמבקשים JSON, החזר JSON תקין בלבד.`;
 
+    let lastGeminiError = '';
     async function callGemini(payload) {
+      lastGeminiError = '';
       if (payload && !payload.systemInstruction) payload = { ...payload, systemInstruction: { parts: [{ text: COACH_BRIEF }] } };
       const apiKey = getGeminiKey();
       if (!apiKey) {
@@ -976,7 +991,7 @@ window.__APP_VERSION = 'v1.9.1';
         for (let attempt = 0; attempt <= delays.length; attempt++) {
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 25000);
+            const timeout = setTimeout(() => controller.abort(), 40000);
             const res = await fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -986,6 +1001,10 @@ window.__APP_VERSION = 'v1.9.1';
             clearTimeout(timeout);
 
             if (!res.ok) {
+              let msg = '';
+              try { const ej = await res.clone().json(); msg = (ej.error && (ej.error.message || ej.error.status)) || ''; } catch (e) {}
+              lastGeminiError = `${model}: ${res.status} ${msg}`.slice(0, 220);
+              if (res.status === 400 && /API key|API_KEY/i.test(msg)) return null; // מפתח שגוי — אין טעם לנסות מודל אחר
               if (attempt < delays.length && (res.status === 429 || res.status >= 500)) {
                 await new Promise(r => setTimeout(r, delays[attempt]));
                 continue;
@@ -994,9 +1013,12 @@ window.__APP_VERSION = 'v1.9.1';
             }
 
             const json = await res.json();
-            const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+            const parts = json?.candidates?.[0]?.content?.parts || [];
+            const text = parts.filter(p => p && p.text && !p.thought).map(p => p.text).join('');
             if (text) return text;
+            lastGeminiError = `${model}: תשובה ריקה (${json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || '?'})`;
           } catch (err) {
+            lastGeminiError = `${model}: ${err && err.name === 'AbortError' ? 'תם הזמן (40 שנ׳)' : 'אין חיבור (' + ((err && err.message) || '') + ')'}`;
             if (attempt < delays.length) {
               await new Promise(r => setTimeout(r, delays[attempt]));
               continue;
@@ -2824,7 +2846,7 @@ ${memoryPrompt}
         const sweet = isSweetText(text);
         if (!sweet) {
           out.innerHTML = aiFailed
-            ? '<p class="text-sm text-amber-700 text-center py-3">⚠️ Gemini לא ענה (בדוק אינטרנט או את המפתח בהגדרות). נסה שוב.</p>'
+            ? `<p class="text-sm text-amber-700 text-center py-2">⚠️ Gemini לא ענה. נסה שוב.</p><p dir="ltr" class="text-[11px] text-slate-500 text-center break-words">${(lastGeminiError || '').replace(/</g, '&lt;')}</p>`
             : '<p class="text-sm text-slate-600 text-center py-3">עוד לא מכיר את המנה הזו. עם מפתח Gemini בהגדרות אני מנתח כל מנה. מנה שתתעד פעם אחת — אזהה בפעם הבאה גם בלי AI.</p>';
           return;
         }
@@ -2846,7 +2868,7 @@ ${memoryPrompt}
             <span class="text-base font-extrabold">${tone[0]} ${tone[1]}</span>
             <span class="text-2xl font-extrabold tabular-nums">${sc.fit}%</span>
           </div>
-          <div class="text-[11px] font-extrabold ${ai ? 'text-violet-600' : 'text-slate-400'}">${ai ? '✨ נותח ע״י Gemini' : (aiFailed ? '⚠️ Gemini לא ענה — חישוב מקומי בלבד' : (getGeminiKey() ? 'חישוב מקומי (אופליין)' : 'חישוב מקומי — הוסף מפתח Gemini בהגדרות לניתוח מלא'))}</div>
+          <div class="text-[11px] font-extrabold ${ai ? 'text-violet-600' : 'text-slate-400'}">${ai ? '✨ נותח ע״י Gemini' : (aiFailed ? `⚠️ Gemini לא ענה — חישוב מקומי בלבד <span dir="ltr" class="font-normal">${(lastGeminiError || '').replace(/</g, '&lt;')}</span>` : (getGeminiKey() ? 'חישוב מקומי (אופליין)' : 'חישוב מקומי — הוסף מפתח Gemini בהגדרות לניתוח מלא'))}</div>
           <div class="text-[12px] font-bold text-slate-700">${food.name} · ${food.netCarbs}ג׳ פחמימה · ${food.protein}ג׳ חלבון · ${food.kosherType}${food.rough ? ' · הערכה גסה' : ''}</div>
           ${ai && ai.reason ? `<p class="text-sm font-bold text-slate-800 leading-snug">${ai.reason}</p>` : ''}
           <ul class="text-[12px] text-slate-600 space-y-0.5">${sc.reasons.map(r => `<li>• ${r}</li>`).join('')}</ul>
@@ -4285,6 +4307,7 @@ ${memoryPrompt}
     }
 
     Object.assign(window, {
+      testGeminiKey,
       openFoodCheck, closeFoodCheck, runFoodCheck, foodCheckEat, foodCheckSkip,
       openWeeklySummary, closeWeeklySummary,
       openActivity, closeActivity, setActType, setActMins, saveActivity, deleteActivity, openDaySummary, closeDaySummary,
