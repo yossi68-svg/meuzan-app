@@ -1,5 +1,5 @@
     import { firebaseConfig } from './firebase-config.js';
-window.__APP_VERSION = 'v1.9.2';
+window.__APP_VERSION = 'v1.9.3';
 
     // =========================================================================
     // 1. DATE HELPERS & CURATED KOSHER QUICK MEALS
@@ -712,7 +712,8 @@ window.__APP_VERSION = 'v1.9.2';
       out.textContent = 'בודק…';
       const t0 = Date.now();
       const raw = await callGemini({ contents: [{ role: 'user', parts: [{ text: 'החזר JSON {"ok":true}' }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { ok: { type: 'BOOLEAN' } }, required: ['ok'] } } });
-      out.innerHTML = raw ? `✅ Gemini מחובר (${((Date.now() - t0) / 1000).toFixed(1)} שנ׳)` : `❌ לא עובד: <span dir="ltr">${(lastGeminiError || 'לא ידוע').replace(/</g, '&lt;')}</span>`;
+      let mdl = ''; try { mdl = localStorage.getItem('meuzan_gemini_model') || ''; } catch (e) {}
+      out.innerHTML = raw ? `✅ Gemini מחובר · ${mdl} (${((Date.now() - t0) / 1000).toFixed(1)} שנ׳)` : `❌ לא עובד: <span dir="ltr">${(lastGeminiError || 'לא ידוע').replace(/</g, '&lt;')}</span>`;
     }
 
     async function backupToDrive() {
@@ -983,12 +984,16 @@ window.__APP_VERSION = 'v1.9.2';
         }
         return null;
       }
-      const models = ['gemini-2.5-flash', 'gemini-flash-latest'];
-      const delays = [600, 1300];
+      // מודלים: קודם זה שעבד לאחרונה. Flash-Lite במכסה החינמית גדולה בהרבה, אז הוא גיבוי טבעי.
+      const ALL = ['gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+      let good = '';
+      try { good = localStorage.getItem('meuzan_gemini_model') || ''; } catch (e) {}
+      const models = good && ALL.includes(good) ? [good, ...ALL.filter(m => m !== good)] : ALL;
+      const errs = [];
 
       for (const model of models) {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-        for (let attempt = 0; attempt <= delays.length; attempt++) {
+        for (let attempt = 0; attempt < 2; attempt++) {
           try {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 40000);
@@ -999,33 +1004,31 @@ window.__APP_VERSION = 'v1.9.2';
               signal: controller.signal
             });
             clearTimeout(timeout);
-
             if (!res.ok) {
               let msg = '';
               try { const ej = await res.clone().json(); msg = (ej.error && (ej.error.message || ej.error.status)) || ''; } catch (e) {}
-              lastGeminiError = `${model}: ${res.status} ${msg}`.slice(0, 220);
-              if (res.status === 400 && /API key|API_KEY/i.test(msg)) return null; // מפתח שגוי — אין טעם לנסות מודל אחר
-              if (attempt < delays.length && (res.status === 429 || res.status >= 500)) {
-                await new Promise(r => setTimeout(r, delays[attempt]));
-                continue;
-              }
+              if (res.status === 400 && /API key|API_KEY/i.test(msg)) { lastGeminiError = `${res.status} ${msg}`.slice(0, 200); return null; }
+              errs.push(`${model}: ${res.status}${res.status === 429 ? ' (מכסה)' : ''}`);
+              // 429 = מכסה של המודל הזה — עוברים מיד למודל הבא במקום לבזבז ניסיונות
+              if (attempt === 0 && res.status >= 500) { await new Promise(r => setTimeout(r, 900)); continue; }
               break;
             }
-
             const json = await res.json();
             const parts = json?.candidates?.[0]?.content?.parts || [];
             const text = parts.filter(p => p && p.text && !p.thought).map(p => p.text).join('');
-            if (text) return text;
-            lastGeminiError = `${model}: תשובה ריקה (${json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || '?'})`;
-          } catch (err) {
-            lastGeminiError = `${model}: ${err && err.name === 'AbortError' ? 'תם הזמן (40 שנ׳)' : 'אין חיבור (' + ((err && err.message) || '') + ')'}`;
-            if (attempt < delays.length) {
-              await new Promise(r => setTimeout(r, delays[attempt]));
-              continue;
+            if (text) {
+              try { localStorage.setItem('meuzan_gemini_model', model); } catch (e) {}
+              return text;
             }
+            errs.push(`${model}: ריק (${json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || '?'})`);
+            break;
+          } catch (err) {
+            errs.push(`${model}: ${err && err.name === 'AbortError' ? 'timeout' : 'network'}`);
+            if (attempt === 0) { await new Promise(r => setTimeout(r, 700)); continue; }
           }
         }
       }
+      lastGeminiError = errs.join(' · ').slice(0, 300);
       return null;
     }
 
